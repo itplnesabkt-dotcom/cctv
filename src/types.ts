@@ -26,6 +26,12 @@ export interface DashboardData {
     lastSync: string;
     dataAktif: number;
   };
+  rawWoRows: any[][];
+  rawPoRows: any[][];
+  woHeaders: string[];
+  poHeaders: string[];
+  woIndices: { name: number; ulp: number; cctv: number };
+  poIndices: { name: number; ulp: number; cctv: number };
 }
 
 export interface UnitRecap {

@@ -4,9 +4,10 @@ import { Users, ChevronRight, TrendingUp } from 'lucide-react';
 
 interface PerformanceTableProps {
   data: OfficerPerformance[];
+  onDetailClick: (type: 'WO' | 'PO', name: string, isCctv: boolean) => void;
 }
 
-export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data }) => {
+export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, onDetailClick }) => {
   return (
     <div className="dashboard-card flex flex-col">
       <div className="bg-brand-primary p-4 flex items-center justify-between shrink-0">
@@ -41,11 +42,31 @@ export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data }) => {
               <tr key={i} className="table-row h-[40px] border-b border-gray-50/50 last:border-0">
                 <td className="px-2 font-black text-brand-primary uppercase text-[10px] whitespace-nowrap">{item.name}</td>
                 <td className="px-2 text-center font-bold text-gray-500 uppercase text-[9px]">{item.ulp}</td>
-                <td className="px-2 text-center font-bold text-gray-600 text-[10px]">{item.jumlahWoTotal}</td>
-                <td className="px-2 text-center font-bold text-brand-primary text-[10px]">{item.totalWoPakaiCctv}</td>
+                <td 
+                  onClick={() => onDetailClick('WO', item.name, false)}
+                  className="px-2 text-center font-bold text-gray-600 text-[10px] cursor-pointer hover:bg-gray-100 hover:text-brand-primary transition-colors"
+                >
+                  {item.jumlahWoTotal}
+                </td>
+                <td 
+                  onClick={() => onDetailClick('WO', item.name, true)}
+                  className="px-2 text-center font-bold text-brand-primary text-[10px] cursor-pointer hover:bg-brand-primary/10 transition-colors"
+                >
+                  {item.totalWoPakaiCctv}
+                </td>
                 <td className="px-2 text-center font-bold text-red-600 italic text-[10px]">{item.persenWo}</td>
-                <td className="px-2 text-center font-bold text-gray-600 text-[10px]">{item.jumlahPoTotal}</td>
-                <td className="px-2 text-center font-bold text-brand-secondary text-[10px]">{item.totalPoPakaiCctv}</td>
+                <td 
+                  onClick={() => onDetailClick('PO', item.name, false)}
+                  className="px-2 text-center font-bold text-gray-600 text-[10px] cursor-pointer hover:bg-gray-100 hover:text-brand-secondary transition-colors"
+                >
+                  {item.jumlahPoTotal}
+                </td>
+                <td 
+                  onClick={() => onDetailClick('PO', item.name, true)}
+                  className="px-2 text-center font-bold text-brand-secondary text-[10px] cursor-pointer hover:bg-brand-secondary/10 transition-colors"
+                >
+                  {item.totalPoPakaiCctv}
+                </td>
                 <td className="px-2 text-center font-bold text-red-600 italic text-[10px]">{item.persenPo}</td>
               </tr>
             ))}

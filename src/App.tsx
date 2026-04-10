@@ -9,6 +9,7 @@ import { PerformanceTable } from './components/PerformanceTable';
 import { ULPPerformanceTable } from './components/ULPPerformanceTable';
 import { CCTVUsageTable } from './components/CCTVUsageTable';
 import { DataTable } from './components/DataTable';
+import { DetailModal } from './components/DetailModal';
 import { GoogleSheetsService } from './services/googleSheetsService';
 import { DashboardData } from './types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -21,6 +22,64 @@ export default function App() {
   const [selectedUlp, setSelectedUlp] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+
+  // Modal State
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalHeaders, setModalHeaders] = useState<string[]>([]);
+  const [modalRows, setModalRows] = useState<any[][]>([]);
+
+  const handleDetailClick = (type: 'WO' | 'PO', identifier: string, isUlp: boolean, isCctv: boolean) => {
+    if (!data) return;
+
+    const headers = type === 'WO' ? data.woHeaders : data.poHeaders;
+    const rawRows = type === 'WO' ? data.rawWoRows : data.rawPoRows;
+    const indices = type === 'WO' ? data.woIndices : data.poIndices;
+
+    // Build officer to ULP map for fallback
+    const officerToUlpMap = new Map<string, string>();
+    data.officerPerformance.forEach(op => {
+      officerToUlpMap.set(op.name.toLowerCase().trim(), op.ulp.toUpperCase().trim());
+    });
+
+    let filteredRows = rawRows;
+
+    // 1. Filter by CCTV if requested
+    if (isCctv) {
+      filteredRows = filteredRows.filter(row => {
+        const cctvVal = String(row[indices.cctv] || '').toUpperCase();
+        return cctvVal.includes('CCTV');
+      });
+    }
+
+    // 2. Filter by ULP or Officer
+    if (isUlp) {
+      const targetUlp = identifier.toUpperCase().trim();
+      filteredRows = filteredRows.filter(row => {
+        let rowUlp = "";
+        if (indices.ulp !== -1 && row[indices.ulp]) {
+          rowUlp = String(row[indices.ulp]).toUpperCase().replace(/^POSKO ULP\s+/i, '').trim();
+        } else {
+          // Fallback to officer mapping
+          const rowName = String(row[indices.name] || '').toLowerCase().trim();
+          rowUlp = officerToUlpMap.get(rowName) || "";
+        }
+        return rowUlp === targetUlp;
+      });
+      setModalTitle(`DETAIL DATA ${type}${isCctv ? ' (CCTV)' : ''} - ULP: ${identifier}`);
+    } else {
+      const targetName = identifier.toLowerCase().trim();
+      filteredRows = filteredRows.filter(row => {
+        const rowName = String(row[indices.name] || '').toLowerCase().trim();
+        return rowName === targetName;
+      });
+      setModalTitle(`DETAIL DATA ${type}${isCctv ? ' (CCTV)' : ''} - PETUGAS: ${identifier}`);
+    }
+
+    setModalHeaders(headers);
+    setModalRows(filteredRows);
+    setModalOpen(true);
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -145,8 +204,14 @@ export default function App() {
 
           {/* Center Column - Performance Tables */}
           <div className="lg:col-span-6 flex flex-col gap-6">
-            <PerformanceTable data={filteredData.officerPerformance} />
-            <ULPPerformanceTable data={filteredData.ulpPerformance} />
+            <PerformanceTable 
+              data={filteredData.officerPerformance} 
+              onDetailClick={(type, name, isCctv) => handleDetailClick(type, name, false, isCctv)}
+            />
+            <ULPPerformanceTable 
+              data={filteredData.ulpPerformance} 
+              onDetailClick={(type, ulp, isCctv) => handleDetailClick(type, ulp, true, isCctv)}
+            />
           </div>
 
           {/* Right Column - PO UP3 & ULP Cards */}
@@ -159,6 +224,14 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      <DetailModal 
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={modalTitle}
+        headers={modalHeaders}
+        rows={modalRows}
+      />
 
       <footer className="bg-white border-t border-gray-100 p-4 text-center">
         <p className="text-[10px] font-black text-gray-300 tracking-[0.5em] uppercase">
