@@ -1,0 +1,7 @@
+{
+  "name": "MONITORING CCTV PLN ES BukittinggI",
+  "description": "Monitoring Prabayar Dashboard for PLN ES Bukittinggi with Google Sheets integration and geospatial mapping.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
