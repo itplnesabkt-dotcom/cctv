@@ -11,13 +11,13 @@ export const CCTVUsageTable: React.FC<CCTVUsageTableProps> = ({ data }) => {
       <div className="overflow-auto">
         <table className="w-full text-center border-collapse border border-gray-300">
           <thead>
-            <tr className="bg-[#002060] text-white text-[11px] font-bold">
+            <tr className="bg-amber-600 text-white text-[11px] font-bold">
               <th rowSpan={2} className="border border-white p-2 w-12">NO</th>
               <th rowSpan={2} className="border border-white p-2 min-w-[200px]">NAMA PETUGAS</th>
-              <th rowSpan={2} className="border border-white p-2 bg-[#bf8f00] w-24">ULP</th>
+              <th rowSpan={2} className="border border-white p-2 bg-amber-700 w-24">ULP</th>
               <th colSpan={7} className="border border-white p-2">PEMAKAIAN CCTV</th>
             </tr>
-            <tr className="bg-[#0070c0] text-white text-[10px] font-bold">
+            <tr className="bg-amber-500 text-white text-[10px] font-bold">
               <th className="border border-white p-2 w-24">JUMLAH WO TOTAL</th>
               <th className="border border-white p-2 w-24">TOTAL WO PAKAI CCTV</th>
               <th className="border border-white p-2 w-20">% WO</th>
@@ -50,7 +50,7 @@ export const CCTVUsageTable: React.FC<CCTVUsageTableProps> = ({ data }) => {
             ))}
           </tbody>
           <tfoot>
-            <tr className="bg-[#002060] h-10">
+            <tr className="bg-amber-600 h-10">
               <td colSpan={10} className="border border-white"></td>
             </tr>
           </tfoot>

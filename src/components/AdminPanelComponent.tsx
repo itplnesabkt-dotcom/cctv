@@ -139,7 +139,7 @@ export function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
           initial={{ opacity: 0, scale: 0.9, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: 20 }}
-          className="relative w-full max-w-2xl bg-[#0a1128] border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+          className="relative w-full max-w-2xl bg-blue-600 border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
         >
           {!isAuthenticated ? (
             <div className="p-10 flex flex-col items-center text-center">
@@ -168,7 +168,7 @@ export function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                 )}
                 <button
                   type="submit"
-                  className="w-full bg-brand-accent text-[#0a1128] py-4 rounded-xl font-black tracking-widest uppercase hover:bg-white transition-all shadow-[0_0_20px_rgba(0,229,255,0.2)]"
+                  className="w-full bg-white text-blue-600 py-4 rounded-xl font-black tracking-widest uppercase hover:bg-blue-50 transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)]"
                 >
                   VERIFIKASI
                 </button>
@@ -179,12 +179,12 @@ export function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
               {/* Header */}
               <div className="bg-white/5 p-6 flex items-center justify-between border-b border-white/10">
                 <div className="flex items-center gap-4">
-                  <div className="bg-brand-accent p-2 rounded-lg">
-                    <ShieldCheck size={20} className="text-brand-primary" />
+                  <div className="bg-white p-2 rounded-lg">
+                    <ShieldCheck size={20} className="text-blue-600" />
                   </div>
                   <div>
                     <h2 className="text-sm font-black text-white tracking-widest uppercase">ADMIN PANEL</h2>
-                    <p className="text-[10px] text-brand-accent font-bold tracking-widest uppercase">PLN ES BUKITTINGGI</p>
+                    <p className="text-[10px] text-blue-200 font-bold tracking-widest uppercase">PLN ES BUKITTINGGI</p>
                   </div>
                 </div>
                 <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
@@ -196,13 +196,13 @@ export function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
               <div className="flex border-b border-white/10">
                 <button
                   onClick={() => setActiveTab('UPLOAD')}
-                  className={`flex-1 py-4 text-[11px] font-black tracking-widest uppercase transition-all ${activeTab === 'UPLOAD' ? 'text-brand-accent border-b-2 border-brand-accent bg-white/5' : 'text-white/40 hover:text-white'}`}
+                  className={`flex-1 py-4 text-[11px] font-black tracking-widest uppercase transition-all ${activeTab === 'UPLOAD' ? 'text-white border-b-2 border-white bg-white/10' : 'text-white/60 hover:text-white'}`}
                 >
                   UPLOAD DATA
                 </button>
                 <button
                   onClick={() => setActiveTab('SETTINGS')}
-                  className={`flex-1 py-4 text-[11px] font-black tracking-widest uppercase transition-all ${activeTab === 'SETTINGS' ? 'text-brand-accent border-b-2 border-brand-accent bg-white/5' : 'text-white/40 hover:text-white'}`}
+                  className={`flex-1 py-4 text-[11px] font-black tracking-widest uppercase transition-all ${activeTab === 'SETTINGS' ? 'text-white border-b-2 border-white bg-white/10' : 'text-white/60 hover:text-white'}`}
                 >
                   PENGATURAN
                 </button>
@@ -236,7 +236,7 @@ export function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                           </div>
                           <button
                             onClick={() => downloadTemplate('WO')}
-                            className="text-[9px] font-black text-brand-accent hover:underline tracking-widest uppercase flex items-center gap-1"
+                            className="text-[9px] font-black text-blue-200 hover:underline tracking-widest uppercase flex items-center gap-1"
                           >
                             <Download size={12} /> TEMPLATE
                           </button>
@@ -252,9 +252,9 @@ export function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                           />
                           <div className="border-2 border-dashed border-white/10 group-hover:border-brand-accent/50 rounded-xl p-8 flex flex-col items-center gap-3 transition-all bg-white/[0.02]">
                             {uploading ? (
-                              <Loader2 size={32} className="text-brand-accent animate-spin" />
+                              <Loader2 size={32} className="text-white animate-spin" />
                             ) : (
-                              <Upload size={32} className="text-white/20 group-hover:text-brand-accent transition-colors" />
+                              <Upload size={32} className="text-white/20 group-hover:text-white transition-colors" />
                             )}
                             <p className="text-[10px] font-black text-white/40 group-hover:text-white tracking-widest uppercase text-center">
                               {uploading ? 'SEDANG MENGUNGGAH...' : 'KLIK UNTUK UNGGAH FILE WO'}
@@ -274,7 +274,7 @@ export function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                           </div>
                           <button
                             onClick={() => downloadTemplate('PO')}
-                            className="text-[9px] font-black text-brand-accent hover:underline tracking-widest uppercase flex items-center gap-1"
+                            className="text-[9px] font-black text-blue-200 hover:underline tracking-widest uppercase flex items-center gap-1"
                           >
                             <Download size={12} /> TEMPLATE
                           </button>
@@ -290,9 +290,9 @@ export function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                           />
                           <div className="border-2 border-dashed border-white/10 group-hover:border-brand-accent/50 rounded-xl p-8 flex flex-col items-center gap-3 transition-all bg-white/[0.02]">
                             {uploading ? (
-                              <Loader2 size={32} className="text-brand-accent animate-spin" />
+                              <Loader2 size={32} className="text-white animate-spin" />
                             ) : (
-                              <Upload size={32} className="text-white/20 group-hover:text-brand-accent transition-colors" />
+                              <Upload size={32} className="text-white/20 group-hover:text-white transition-colors" />
                             )}
                             <p className="text-[10px] font-black text-white/40 group-hover:text-white tracking-widest uppercase text-center">
                               {uploading ? 'SEDANG MENGUNGGAH...' : 'KLIK UNTUK UNGGAH FILE PO'}

@@ -10,7 +10,7 @@ interface ULPPerformanceTableProps {
 export const ULPPerformanceTable: React.FC<ULPPerformanceTableProps> = ({ data, onDetailClick }) => {
   return (
     <div className="dashboard-card flex flex-col mt-6">
-      <div className="bg-brand-primary p-4 flex items-center justify-between">
+      <div className="bg-rose-500 p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="bg-brand-accent p-1.5 rounded text-brand-primary">
             <Building2 size={14} />
@@ -27,13 +27,13 @@ export const ULPPerformanceTable: React.FC<ULPPerformanceTableProps> = ({ data, 
         <table className="w-full text-left border-collapse">
           <thead className="sticky top-0 z-10 bg-gray-50 shadow-sm">
             <tr className="border-b border-gray-100">
-              <th className="p-2 text-[8px] font-black text-gray-400 tracking-widest uppercase whitespace-nowrap">UNIT LAYANAN (ULP)</th>
-              <th className="p-2 text-[8px] font-black text-gray-400 tracking-widest uppercase text-center">WO TOTAL</th>
-              <th className="p-2 text-[8px] font-black text-brand-primary tracking-widest uppercase text-center">WO CCTV</th>
-              <th className="p-2 text-[8px] font-black text-red-500 tracking-widest uppercase text-center">%</th>
-              <th className="p-2 text-[8px] font-black text-gray-400 tracking-widest uppercase text-center">PO TOTAL</th>
-              <th className="p-2 text-[8px] font-black text-brand-secondary tracking-widest uppercase text-center">PO CCTV</th>
-              <th className="p-2 text-[8px] font-black text-red-500 tracking-widest uppercase text-center">%</th>
+              <th className="p-2 text-[10px] font-black text-gray-400 tracking-widest uppercase whitespace-nowrap">UNIT LAYANAN (ULP)</th>
+              <th className="p-2 text-[10px] font-black text-gray-400 tracking-widest uppercase text-center">WO TOTAL</th>
+              <th className="p-2 text-[10px] font-black text-brand-primary tracking-widest uppercase text-center">WO CCTV</th>
+              <th className="p-2 text-[10px] font-black text-red-500 tracking-widest uppercase text-center">%</th>
+              <th className="p-2 text-[10px] font-black text-gray-400 tracking-widest uppercase text-center">PO TOTAL</th>
+              <th className="p-2 text-[10px] font-black text-brand-secondary tracking-widest uppercase text-center">PO CCTV</th>
+              <th className="p-2 text-[10px] font-black text-red-500 tracking-widest uppercase text-center">%</th>
             </tr>
           </thead>
           <tbody>

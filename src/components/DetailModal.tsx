@@ -48,7 +48,7 @@ export function DetailModal({ isOpen, onClose, title, headers, rows }: DetailMod
           className="relative w-full max-w-7xl h-full max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden"
         >
           {/* Header */}
-          <div className="bg-[#0a1128] text-white p-4 flex items-center justify-between border-b border-white/10">
+          <div className="bg-cyan-600 text-white p-4 flex items-center justify-between border-b border-white/10">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-brand-accent rounded-lg flex items-center justify-center">
                 <FileText size={20} className="text-[#0a1128]" />

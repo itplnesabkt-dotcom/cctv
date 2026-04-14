@@ -12,7 +12,7 @@ export const POUP3Card: React.FC<POUP3CardProps> = ({ totalPo, totalPoCctv }) =>
 
   return (
     <div className="dashboard-card flex flex-col shrink-0">
-      <div className="bg-brand-primary px-4 py-2 flex items-center justify-between shrink-0">
+      <div className="bg-orange-500 px-4 py-2 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <div className="bg-brand-secondary p-1 rounded text-white">
             <ClipboardList size={12} />

@@ -10,7 +10,7 @@ interface RecapTableProps {
 export const RecapTable: React.FC<RecapTableProps> = ({ data }) => {
   return (
     <div className="dashboard-card h-full flex flex-col">
-      <div className="bg-brand-primary p-4 flex items-center justify-between">
+      <div className="bg-lime-600 p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="bg-brand-secondary p-1.5 rounded text-white">
             <ClipboardList size={14} />
@@ -43,7 +43,7 @@ export const RecapTable: React.FC<RecapTableProps> = ({ data }) => {
         </table>
       </div>
 
-      <div className="bg-[#0a1128] p-3 flex items-center justify-between">
+      <div className="bg-lime-700 p-3 flex items-center justify-between">
         <span className="text-[10px] font-black text-white tracking-widest uppercase">TOTAL AGREGAT</span>
         <div className="flex gap-4">
           <span className="text-[10px] font-black text-brand-secondary">{formatNumber(data.reduce((a, b) => a + (Number(b.total) || 0), 0))}</span>

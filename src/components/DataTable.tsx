@@ -12,7 +12,7 @@ export const DataTable: React.FC<DataTableProps> = ({ data }) => {
     <div className="dashboard-card flex flex-col">
       <div className="p-4 flex items-center justify-between border-b border-gray-100">
         <div className="flex items-center gap-3">
-          <div className="bg-brand-primary p-2 rounded-lg text-brand-accent">
+          <div className="bg-teal-600 p-2 rounded-lg text-brand-accent">
             <Database size={18} />
           </div>
           <div>
@@ -34,7 +34,7 @@ export const DataTable: React.FC<DataTableProps> = ({ data }) => {
             <PaginationButton icon={<ChevronsRight size={16} />} />
           </div>
 
-          <button className="bg-brand-primary text-white px-4 py-2 rounded-xl font-black text-[10px] tracking-widest flex items-center gap-2 hover:opacity-90 transition-opacity">
+          <button className="bg-teal-600 text-white px-4 py-2 rounded-xl font-black text-[10px] tracking-widest flex items-center gap-2 hover:opacity-90 transition-opacity">
             <Filter size={14} />
             FILTER VALIDASI
           </button>
@@ -44,7 +44,7 @@ export const DataTable: React.FC<DataTableProps> = ({ data }) => {
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse min-w-[1200px]">
           <thead>
-            <tr className="bg-[#0a1128] text-white">
+            <tr className="bg-teal-600 text-white">
               <th className="p-4 text-[9px] font-black tracking-widest uppercase">UNIT</th>
               <th className="p-4 text-[9px] font-black tracking-widest uppercase">IDPEL</th>
               <th className="p-4 text-[9px] font-black tracking-widest uppercase">NAMA</th>

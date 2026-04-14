@@ -35,7 +35,7 @@ export const SubHeader: React.FC<SubHeaderProps> = ({
         </div>
         
         <div className="flex items-center gap-4">
-          <div className="bg-brand-primary text-white px-3 py-1 rounded-full flex items-center gap-2">
+          <div className="bg-blue-600 text-white px-3 py-1 rounded-full flex items-center gap-2">
             <span className="w-2 h-2 bg-green-400 rounded-full" />
             <span className="text-[10px] font-black tracking-widest">{dataAktif} DATA AKTIF</span>
           </div>
@@ -99,14 +99,6 @@ export const SubHeader: React.FC<SubHeaderProps> = ({
             </div>
           </div>
           
-          <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5 min-w-[200px]">
-            <Search size={14} className="text-gray-400" />
-            <input 
-              type="text" 
-              placeholder="IDENTITAS PETUGAS..." 
-              className="bg-transparent border-none outline-none text-[10px] font-bold w-full placeholder:text-gray-300"
-            />
-          </div>
         </div>
 
         <button 
