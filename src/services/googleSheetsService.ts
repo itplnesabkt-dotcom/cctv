@@ -1,4 +1,4 @@
-import { DashboardData, MainTableEntry, UnitRecap, OfficerPerformance, CCTVUsage } from "../types";
+import { DashboardData, MainTableEntry, UnitRecap, OfficerPerformance, CCTVUsage } from "../types.ts";
 import Papa from "papaparse";
 
 export class GoogleSheetsService {
