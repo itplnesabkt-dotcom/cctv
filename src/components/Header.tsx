@@ -9,8 +9,13 @@ export const Header: React.FC<HeaderProps> = ({ onAdminClick }) => {
   return (
     <header className="bg-[#0a1128] text-white h-16 flex items-center justify-between px-6 sticky top-0 z-50">
       <div className="flex items-center gap-4">
-        <div className="bg-brand-accent p-2 rounded-lg">
-          <Zap className="w-6 h-6 text-brand-primary" fill="currentColor" />
+        <div className="bg-white p-1 rounded-lg">
+          <img 
+            src="https://lh3.googleusercontent.com/d/1oVyyV8xNI5Xse4CMC2Ovn11w18uVXp7E" 
+            alt="Logo" 
+            className="w-8 h-8 object-contain"
+            referrerPolicy="no-referrer"
+          />
         </div>
         <div>
           <h1 className="text-sm font-black tracking-tighter leading-none">DASHBOARD MONITORING CCTV</h1>
