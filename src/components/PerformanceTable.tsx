@@ -10,7 +10,7 @@ interface PerformanceTableProps {
 export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, onDetailClick }) => {
   return (
     <div className="dashboard-card flex flex-col">
-      <div className="bg-brand-primary p-4 flex items-center justify-between shrink-0">
+      <div className="bg-slate-800 p-4 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="bg-brand-secondary p-1.5 rounded text-white">
             <Users size={14} />
@@ -27,14 +27,14 @@ export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, onDeta
         <table className="w-full text-left border-collapse">
           <thead className="sticky top-0 z-10 bg-gray-50 shadow-sm">
             <tr className="border-b border-gray-100 h-[36px]">
-              <th className="px-2 text-[8px] font-black text-gray-400 tracking-widest uppercase whitespace-nowrap">NAMA PETUGAS</th>
-              <th className="px-2 text-[8px] font-black text-gray-400 tracking-widest uppercase text-center">ULP</th>
-              <th className="px-2 text-[8px] font-black text-gray-400 tracking-widest uppercase text-center">WO TOTAL</th>
+              <th className="px-2 text-[8px] font-black text-black-600 tracking-widest uppercase whitespace-nowrap">NAMA PETUGAS</th>
+              <th className="px-2 text-[8px] font-black text-black-600 tracking-widest uppercase text-center">ULP</th>
+              <th className="px-2 text-[8px] font-black text-black-600 tracking-widest uppercase text-center">WO TOTAL</th>
               <th className="px-2 text-[8px] font-black text-brand-primary tracking-widest uppercase text-center">WO CCTV</th>
-              <th className="px-2 text-[8px] font-black text-red-500 tracking-widest uppercase text-center">%</th>
-              <th className="px-2 text-[8px] font-black text-gray-400 tracking-widest uppercase text-center">PO TOTAL</th>
+              <th className="px-2 text-[8px] font-black text-red-600 tracking-widest uppercase text-center">%</th>
+              <th className="px-2 text-[8px] font-black text-black-600 tracking-widest uppercase text-center">PO TOTAL</th>
               <th className="px-2 text-[8px] font-black text-brand-secondary tracking-widest uppercase text-center">PO CCTV</th>
-              <th className="px-2 text-[8px] font-black text-red-500 tracking-widest uppercase text-center">%</th>
+              <th className="px-2 text-[8px] font-black text-red-600 tracking-widest uppercase text-center">%</th>
             </tr>
           </thead>
           <tbody>
