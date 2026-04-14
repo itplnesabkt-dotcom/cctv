@@ -10,6 +10,7 @@ import { ULPPerformanceTable } from './components/ULPPerformanceTable';
 import { CCTVUsageTable } from './components/CCTVUsageTable';
 import { DataTable } from './components/DataTable';
 import { DetailModal } from './components/DetailModal';
+import { AdminPanel } from './components/AdminPanel';
 import { GoogleSheetsService } from './services/googleSheetsService';
 import { DashboardData } from './types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -17,7 +18,6 @@ import { Loader2 } from 'lucide-react';
 
 export default function App() {
   const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedUlp, setSelectedUlp] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -28,6 +28,9 @@ export default function App() {
   const [modalTitle, setModalTitle] = useState("");
   const [modalHeaders, setModalHeaders] = useState<string[]>([]);
   const [modalRows, setModalRows] = useState<any[][]>([]);
+
+  // Admin Panel State
+  const [adminOpen, setAdminOpen] = useState(false);
 
   const handleDetailClick = (type: 'WO' | 'PO', identifier: string, isUlp: boolean, isCctv: boolean) => {
     if (!data) return;
@@ -89,7 +92,7 @@ export default function App() {
         // Check if we actually got any data
         const hasData = result.officerPerformance.length > 0 || result.summary.dataAktif > 0;
         if (!hasData) {
-          setError("Tidak ada data yang ditemukan. Pastikan Google Sheets sudah 'Published to the Web' dan ID Spreadsheet sudah benar.");
+          setError("Tidak ada data yang ditemukan untuk rentang tanggal ini. Pastikan format tanggal di Google Sheets sudah benar.");
         } else {
           setError(null);
         }
@@ -98,8 +101,6 @@ export default function App() {
       } catch (err) {
         console.error("Failed to fetch data:", err);
         setError("Gagal menghubungkan ke Google Sheets. Periksa koneksi internet atau pengaturan berbagi spreadsheet.");
-      } finally {
-        setLoading(false);
       }
     };
 
@@ -108,24 +109,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [startDate, endDate]);
 
-  if (loading) {
-    return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#0a1128] text-white gap-6">
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-        >
-          <Loader2 size={48} className="text-brand-accent" />
-        </motion.div>
-        <div className="text-center">
-          <h2 className="text-xl font-black tracking-widest uppercase mb-2">MENYINKRONKAN SISTEM...</h2>
-          <p className="text-brand-accent/60 text-xs font-bold tracking-[0.3em] uppercase">MENGHUBUNGKAN KE BASIS DATA GOOGLE SHEETS</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
+  if (error && !data) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#0a1128] text-white p-6 gap-6">
         <div className="bg-red-500/10 border border-red-500/50 p-8 rounded-lg max-w-2xl w-full text-center">
@@ -177,7 +161,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header />
+      <Header onAdminClick={() => setAdminOpen(true)} />
       <SubHeader 
         lastSync={data.summary.lastSync} 
         dataAktif={data.summary.dataAktif} 
@@ -231,6 +215,11 @@ export default function App() {
         title={modalTitle}
         headers={modalHeaders}
         rows={modalRows}
+      />
+
+      <AdminPanel 
+        isOpen={adminOpen}
+        onClose={() => setAdminOpen(false)}
       />
 
       <footer className="bg-white border-t border-gray-100 p-4 text-center">
