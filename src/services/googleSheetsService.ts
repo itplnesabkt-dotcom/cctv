@@ -57,6 +57,43 @@ export class GoogleSheetsService {
     return [];
   }
 
+  static async updateSheetData(sheetName: string, data: any[]): Promise<boolean> {
+    // In Vite, environment variables are accessed via import.meta.env
+    // and must be prefixed with VITE_ to be exposed to the client.
+    // We use optional chaining and multiple fallback checks to prevent "undefined" errors.
+    const metaEnv = (import.meta as any).env;
+    let scriptUrl = metaEnv?.VITE_APPS_SCRIPT_URL;
+    
+    if (!scriptUrl) {
+      console.error("VITE_APPS_SCRIPT_URL is not defined in environment. Please check your .env file or AI Studio Settings.");
+      return false;
+    }
+
+    // Clean URL from quotes if any (sometimes users add them in .env)
+    scriptUrl = scriptUrl.trim().replace(/^["']|["']$/g, '');
+
+    try {
+      // Using a simple POST with text/plain to avoid CORS preflight issues with Apps Script
+      await fetch(scriptUrl, {
+        method: 'POST',
+        mode: 'no-cors', 
+        headers: {
+          'Content-Type': 'text/plain',
+        },
+        body: JSON.stringify({
+          sheetName,
+          data, // Array of arrays [[col1, col2], [row1col1, row1col2]]
+          spreadsheetId: this.SPREADSHEET_ID
+        }),
+      });
+
+      return true;
+    } catch (error) {
+      console.error(`Error updating sheet ${sheetName}:`, error);
+      return false;
+    }
+  }
+
   static async fetchData(startDate?: string, endDate?: string): Promise<DashboardData> {
     // Fetching the primary sheets requested by the user
     const [woRows, poRows, petugasRows, ulpRows] = await Promise.all([
@@ -73,42 +110,56 @@ export class GoogleSheetsService {
         .toUpperCase()
         .replace(/[^A-Z0-9]/g, "");
 
-    // Helper to parse date strings from sheet
+    // Helper to parse date strings from sheet consistently as local time
     const parseSheetDate = (dateStr: string) => {
       if (!dateStr) return null;
-      // Try standard parsing first
-      let d = new Date(dateStr);
-      if (!isNaN(d.getTime())) return d;
-
-      // Handle DD-MM-YYYY or DD/MM/YYYY
+      
+      // Handle DD-MM-YYYY or DD/MM/YYYY (Common in Indonesian sheets)
       const parts = dateStr.split(/[-/]/);
       if (parts.length === 3) {
-        // Assume DD-MM-YYYY
-        const day = parseInt(parts[0], 10);
-        const month = parseInt(parts[1], 10) - 1;
-        const year = parts[2].length === 2 ? 2000 + parseInt(parts[2], 10) : parseInt(parts[2], 10);
-        d = new Date(year, month, day);
-        if (!isNaN(d.getTime())) return d;
+        const p0 = parseInt(parts[0], 10);
+        const p1 = parseInt(parts[1], 10);
+        const p2Str = parts[2].trim();
+        const p2 = p2Str.length === 2 ? 2000 + parseInt(p2Str, 10) : parseInt(p2Str, 10);
+
+        // Try DD-MM-YYYY first
+        if (p0 <= 31 && p1 <= 12) {
+          return new Date(p2, p1 - 1, p0);
+        }
+        // Fallback to YYYY-MM-DD if it looks like that
+        if (p0 > 1000 && p1 <= 12 && p2 <= 31) {
+          return new Date(p0, p1 - 1, p2);
+        }
       }
+
+      // Try standard parsing
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) return d;
+      
       return null;
     };
 
-    const isWithinRange = (date: Date | null, start?: string, end?: string) => {
-      if (!start && !end) return true;
+    // Pre-parse start and end dates to avoid repeated parsing in loop
+    const sDate = startDate ? (() => {
+      const [y, m, d] = startDate.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    })() : null;
+
+    const eDate = endDate ? (() => {
+      const [y, m, d] = endDate.split('-').map(Number);
+      const date = new Date(y, m - 1, d);
+      date.setHours(23, 59, 59, 999);
+      return date;
+    })() : null;
+
+    const isWithinRange = (date: Date | null) => {
+      if (!sDate && !eDate) return true;
       if (!date) return false;
       
       const dTime = date.getTime();
-      if (start) {
-        const sTime = new Date(start).getTime();
-        if (dTime < sTime) return false;
-      }
-      if (end) {
-        const eTime = new Date(end).getTime();
-        // Set end time to end of day
-        const eDate = new Date(end);
-        eDate.setHours(23, 59, 59, 999);
-        if (dTime > eDate.getTime()) return false;
-      }
+      if (sDate && dTime < sDate.getTime()) return false;
+      if (eDate && dTime > eDate.getTime()) return false;
+      
       return true;
     };
 
@@ -234,7 +285,7 @@ export class GoogleSheetsService {
       
       const dateVal = String(row[woDateIdx] || "").trim();
       const rowDate = parseSheetDate(dateVal);
-      if (!isWithinRange(rowDate, startDate, endDate)) return;
+      if (!isWithinRange(rowDate)) return;
 
       const name = cleanName(row[woNameIdx]);
       if (!name || name === "NAMAPETUGAS" || name === "NAME") return;
@@ -333,7 +384,7 @@ export class GoogleSheetsService {
 
       const dateVal = String(row[poDateIdx] || "").trim();
       const rowDate = parseSheetDate(dateVal);
-      if (!isWithinRange(rowDate, startDate, endDate)) return;
+      if (!isWithinRange(rowDate)) return;
 
       const name = cleanName(row[poNameIdx]);
       if (!name || name === "NAMAPETUGAS" || name === "NAME") return;
