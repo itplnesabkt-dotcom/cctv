@@ -35,41 +35,49 @@ export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, onDeta
               <th className="px-2 text-[10px] font-black text-black-600 tracking-widest uppercase text-center">PO TOTAL</th>
               <th className="px-2 text-[10px] font-black text-brand-secondary tracking-widest uppercase text-center">PO CCTV</th>
               <th className="px-2 text-[10px] font-black text-red-600 tracking-widest uppercase text-center">%</th>
+              <th className="px-2 text-[10px] font-black text-blue-600 tracking-widest uppercase text-center">TOTAL %</th>
             </tr>
           </thead>
           <tbody>
-            {data.map((item, i) => (
-              <tr key={i} className="table-row h-[40px] border-b border-gray-50/50 last:border-0">
-                <td className="px-2 font-black text-brand-primary uppercase text-[10px] whitespace-nowrap">{item.name}</td>
-                <td className="px-2 text-center font-bold text-gray-500 uppercase text-[9px]">{item.ulp}</td>
-                <td 
-                  onClick={() => onDetailClick('WO', item.name, false)}
-                  className="px-2 text-center font-bold text-gray-600 text-[10px] cursor-pointer hover:bg-gray-100 hover:text-brand-primary transition-colors"
-                >
-                  {item.jumlahWoTotal}
-                </td>
-                <td 
-                  onClick={() => onDetailClick('WO', item.name, true)}
-                  className="px-2 text-center font-bold text-brand-primary text-[10px] cursor-pointer hover:bg-brand-primary/10 transition-colors"
-                >
-                  {item.totalWoPakaiCctv}
-                </td>
-                <td className="px-2 text-center font-bold text-red-600 italic text-[10px]">{item.persenWo}</td>
-                <td 
-                  onClick={() => onDetailClick('PO', item.name, false)}
-                  className="px-2 text-center font-bold text-gray-600 text-[10px] cursor-pointer hover:bg-gray-100 hover:text-brand-secondary transition-colors"
-                >
-                  {item.jumlahPoTotal}
-                </td>
-                <td 
-                  onClick={() => onDetailClick('PO', item.name, true)}
-                  className="px-2 text-center font-bold text-brand-secondary text-[10px] cursor-pointer hover:bg-brand-secondary/10 transition-colors"
-                >
-                  {item.totalPoPakaiCctv}
-                </td>
-                <td className="px-2 text-center font-bold text-red-600 italic text-[10px]">{item.persenPo}</td>
-              </tr>
-            ))}
+            {data.map((item, i) => {
+              const woVal = parseFloat(item.persenWo) || 0;
+              const poVal = parseFloat(item.persenPo) || 0;
+              const totalAvg = ((woVal + poVal) / 2).toFixed(2);
+              
+              return (
+                <tr key={i} className="table-row h-[40px] border-b border-gray-50/50 last:border-0">
+                  <td className="px-2 font-black text-brand-primary uppercase text-[10px] whitespace-nowrap">{item.name}</td>
+                  <td className="px-2 text-center font-bold text-gray-500 uppercase text-[9px]">{item.ulp}</td>
+                  <td 
+                    onClick={() => onDetailClick('WO', item.name, false)}
+                    className="px-2 text-center font-bold text-gray-600 text-[10px] cursor-pointer hover:bg-gray-100 hover:text-brand-primary transition-colors"
+                  >
+                    {item.jumlahWoTotal}
+                  </td>
+                  <td 
+                    onClick={() => onDetailClick('WO', item.name, true)}
+                    className="px-2 text-center font-bold text-brand-primary text-[10px] cursor-pointer hover:bg-brand-primary/10 transition-colors"
+                  >
+                    {item.totalWoPakaiCctv}
+                  </td>
+                  <td className="px-2 text-center font-bold text-red-600 italic text-[10px]">{item.persenWo}</td>
+                  <td 
+                    onClick={() => onDetailClick('PO', item.name, false)}
+                    className="px-2 text-center font-bold text-gray-600 text-[10px] cursor-pointer hover:bg-gray-100 hover:text-brand-secondary transition-colors"
+                  >
+                    {item.jumlahPoTotal}
+                  </td>
+                  <td 
+                    onClick={() => onDetailClick('PO', item.name, true)}
+                    className="px-2 text-center font-bold text-brand-secondary text-[10px] cursor-pointer hover:bg-brand-secondary/10 transition-colors"
+                  >
+                    {item.totalPoPakaiCctv}
+                  </td>
+                  <td className="px-2 text-center font-bold text-red-600 italic text-[10px]">{item.persenPo}</td>
+                  <td className="px-2 text-center font-black text-blue-600 text-[10px] bg-blue-50/30">{totalAvg}%</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -141,12 +141,22 @@ export default function App() {
   
   const filteredData = {
     ...data,
-    ulpPerformance: selectedUlp 
+    ulpPerformance: (selectedUlp 
       ? data.ulpPerformance.filter(u => u.ulp === selectedUlp)
-      : data.ulpPerformance,
-    officerPerformance: selectedUlp
+      : data.ulpPerformance
+    ).sort((a, b) => {
+      const avgA = (parseFloat(a.persenWo) || 0) + (parseFloat(a.persenPo) || 0);
+      const avgB = (parseFloat(b.persenWo) || 0) + (parseFloat(b.persenPo) || 0);
+      return avgB - avgA;
+    }),
+    officerPerformance: (selectedUlp
       ? data.officerPerformance.filter(o => o.ulp === selectedUlp)
-      : data.officerPerformance,
+      : data.officerPerformance
+    ).sort((a, b) => {
+      const avgA = (parseFloat(a.persenWo) || 0) + (parseFloat(a.persenPo) || 0);
+      const avgB = (parseFloat(b.persenWo) || 0) + (parseFloat(b.persenPo) || 0);
+      return avgB - avgA;
+    }),
     summary: selectedUlp 
       ? {
           ...data.summary,

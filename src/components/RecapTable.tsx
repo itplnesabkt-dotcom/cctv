@@ -28,17 +28,25 @@ export const RecapTable: React.FC<RecapTableProps> = ({ data }) => {
               <th className="p-3 text-[9px] font-black text-gray-400 tracking-widest uppercase text-center">TOTAL</th>
               <th className="p-3 text-[9px] font-black text-green-500 tracking-widest uppercase text-center">VAL</th>
               <th className="p-3 text-[9px] font-black text-red-500 tracking-widest uppercase text-center">INV</th>
+              <th className="p-3 text-[9px] font-black text-blue-600 tracking-widest uppercase text-center">TOTAL %</th>
             </tr>
           </thead>
           <tbody>
-            {data.map((item, i) => (
-              <tr key={i} className="table-row">
-                <td className="p-3 font-black text-brand-primary uppercase">{item.unit}</td>
-                <td className="p-3 text-center font-bold text-gray-600">{item.total}</td>
-                <td className="p-3 text-center font-bold text-green-600">{item.valid}</td>
-                <td className="p-3 text-center font-bold text-red-600">{item.invalid}</td>
-              </tr>
-            ))}
+            {data.map((item, i) => {
+              const total = Number(item.total) || 0;
+              const valid = Number(item.valid) || 0;
+              const percent = total > 0 ? ((valid / total) * 100).toFixed(2) : "0.00";
+              
+              return (
+                <tr key={i} className="table-row">
+                  <td className="p-3 font-black text-brand-primary uppercase">{item.unit}</td>
+                  <td className="p-3 text-center font-bold text-gray-600">{item.total}</td>
+                  <td className="p-3 text-center font-bold text-green-600">{item.valid}</td>
+                  <td className="p-3 text-center font-bold text-red-600">{item.invalid}</td>
+                  <td className="p-3 text-center font-black text-blue-600 bg-blue-50/30">{percent}%</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
