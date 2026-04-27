@@ -3,6 +3,8 @@ import Papa from "papaparse";
 
 export class GoogleSheetsService {
   private static SPREADSHEET_ID = "1lMwrFdf-VKmmWWZ_UU_XGkvhUWvH-t16ZL4lSjDbPRU";
+  private static petugasCache: any[][] | null = null;
+  private static ulpCache: any[][] | null = null;
 
   private static async fetchSheetDataRaw(sheetName: string): Promise<any[][]> {
     const endpoints = [
@@ -99,8 +101,8 @@ export class GoogleSheetsService {
     const [woRows, poRows, petugasRows, ulpRows] = await Promise.all([
       this.fetchSheetDataRaw("WO"),
       this.fetchSheetDataRaw("PO"),
-      this.fetchSheetDataRaw("PETUGAS"),
-      this.fetchSheetDataRaw("ULP"),
+      this.petugasCache ? Promise.resolve(this.petugasCache) : this.fetchSheetDataRaw("PETUGAS").then(data => { this.petugasCache = data; return data; }),
+      this.ulpCache ? Promise.resolve(this.ulpCache) : this.fetchSheetDataRaw("ULP").then(data => { this.ulpCache = data; return data; }),
     ]);
 
     // Helper to clean names for matching
@@ -110,34 +112,109 @@ export class GoogleSheetsService {
         .toUpperCase()
         .replace(/[^A-Z0-9]/g, "");
 
-    // Helper to parse date strings from sheet consistently as local time
+    // Helper to parse date strings from sheet consistently
     const parseSheetDate = (dateStr: string) => {
       if (!dateStr) return null;
       
-      // Handle DD-MM-YYYY or DD/MM/YYYY (Common in Indonesian sheets)
-      const parts = dateStr.split(/[-/]/);
-      if (parts.length === 3) {
-        const p0 = parseInt(parts[0], 10);
-        const p1 = parseInt(parts[1], 10);
-        const p2Str = parts[2].trim();
-        const p2 = p2Str.length === 2 ? 2000 + parseInt(p2Str, 10) : parseInt(p2Str, 10);
-
-        // Try DD-MM-YYYY first
-        if (p0 <= 31 && p1 <= 12) {
-          return new Date(p2, p1 - 1, p0);
-        }
-        // Fallback to YYYY-MM-DD if it looks like that
-        if (p0 > 1000 && p1 <= 12 && p2 <= 31) {
-          return new Date(p0, p1 - 1, p2);
+      let cleanStr = String(dateStr).trim();
+      
+      // 0. Handle Excel/Google Sheets serial dates (e.g., 46125.6963)
+      if (/^\d{5}(\.\d+)?$/.test(cleanStr)) {
+        const serial = parseFloat(cleanStr);
+        const utcDays = serial - 25569;
+        // Pre-rounding to avoid floating point precision issues with seconds
+        return new Date(Math.round(utcDays * 86400 * 1000));
+      }
+      
+      // 1. Handle Google Sheets JSON date format: Date(2026,3,11,14,30,0)
+      if (cleanStr.startsWith('Date(')) {
+        const matches = cleanStr.match(/\d+/g);
+        if (matches && matches.length >= 3) {
+          return new Date(
+            parseInt(matches[0]), 
+            parseInt(matches[1]), 
+            parseInt(matches[2]),
+            matches[3] ? parseInt(matches[3]) : 0,
+            matches[4] ? parseInt(matches[4]) : 0,
+            matches[5] ? parseInt(matches[5]) : 0
+          );
         }
       }
 
-      // Try standard parsing
-      const d = new Date(dateStr);
-      if (!isNaN(d.getTime())) return d;
+      // Cleanup day name if present "Senin, 13-04-2026"
+      cleanStr = cleanStr.replace(/^[a-z]+,\s*/i, "");
+      
+      // Split into date and time parts
+      const [datePart, timePart] = cleanStr.split(/\s+/);
+      if (!datePart) return null;
+
+      // Handle date part
+      const dateParts = datePart.split(/[-/.]+/).filter(p => p.length > 0);
+      if (dateParts.length >= 3) {
+        let p1 = parseInt(dateParts[0], 10);
+        let p2Str = dateParts[1].toLowerCase();
+        let p3 = parseInt(dateParts[2], 10);
+        
+        let d = p1;
+        let m = parseInt(p2Str, 10);
+        let y = p3;
+
+        if (p1 > 31) {
+          y = p1;
+          m = parseInt(p2Str, 10);
+          d = parseInt(dateParts[2], 10);
+        } else if (y < 100) {
+          y = 2000 + y;
+        }
+
+        if (isNaN(m)) {
+          const months: Record<string, number> = {
+            'jan': 0, 'januari': 0, 'january': 0,
+            'feb': 1, 'februari': 1, 'february': 1,
+            'mar': 2, 'maret': 2, 'march': 2,
+            'apr': 3, 'april': 3, 'mei': 4, 'may': 4,
+            'jun': 5, 'juni': 5, 'june': 5,
+            'jul': 6, 'juli': 6, 'july': 6,
+            'agu': 7, 'agustus': 7, 'aug': 7, 'august': 7, 'agt': 7,
+            'sep': 8, 'september': 8, 'okt': 9, 'oktober': 9, 'oct': 9, 'october': 9,
+            'nov': 10, 'november': 10, 'des': 11, 'desember': 11, 'dec': 11, 'december': 11,
+            'mrt': 2, 'agh': 7
+          };
+          if (months[p2Str] !== undefined) m = months[p2Str] + 1;
+        }
+
+        if (m > 12 && d <= 12) {
+          const tmp = m; m = d; d = tmp;
+        }
+
+        if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+          const date = new Date(y, m - 1, d);
+          if (date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d) {
+            // Add time if available
+            if (timePart) {
+              const tParts = timePart.split(/[:.]+/);
+              if (tParts.length >= 2) {
+                date.setHours(parseInt(tParts[0], 10), parseInt(tParts[1], 10), tParts[2] ? parseInt(tParts[2], 10) : 0);
+              }
+            }
+            return date;
+          }
+        }
+      }
+
+      // 3. Fallback to standard
+      const dObj = new Date(cleanStr);
+      if (!isNaN(dObj.getTime())) {
+        const isoMatch = cleanStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+        if (isoMatch) {
+          return new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, parseInt(isoMatch[3]));
+        }
+        return dObj;
+      }
       
       return null;
     };
+
 
     // Pre-parse start and end dates to avoid repeated parsing in loop
     const sDate = startDate ? (() => {
@@ -191,33 +268,43 @@ export class GoogleSheetsService {
       let bestIndices = targets.map(() => -1);
       let maxMatches = 0;
 
-      for (let r = 0; r < Math.min(rows.length, 20); r++) {
+      // Scan first 50 rows for headers
+      for (let r = 0; r < Math.min(rows.length, 50); r++) {
         const row = rows[r].map((h: any) => String(h || "").trim().toLowerCase());
         const indices = targets.map(target => {
           const t = target.toLowerCase();
           let idx = row.indexOf(t);
           if (idx !== -1) return idx;
+          
+          // Fuzzy matches
           if (t === "nama petugas" || t === "name") {
-            idx = row.findIndex(h => h.includes("nama") && h.includes("petugas"));
-            if (idx === -1) idx = row.findIndex(h => h.includes("nama") || h.includes("petugas") || h.includes("name"));
+            idx = row.findIndex(h => (h.includes("nama") && h.includes("petugas")) || h === "petugas" || h === "name" || h === "nama");
           } else if (t === "cctv") {
             idx = row.findIndex(h => h === "cctv" || h.includes("cctv"));
           } else if (t === "ulp") {
-            idx = row.findIndex(h => h === "ulp" || h.includes("ulp"));
+            idx = row.findIndex(h => h === "ulp" || h.includes("ulp") || h === "unit");
           } else if (t === "tanggal") {
-            idx = row.findIndex(h => h.includes("tanggal") || h.includes("date") || h.includes("tgl"));
+            idx = row.findIndex(h => h.includes("tgl lapor") || h.includes("tgl lap") || h.includes("tanggal") || h.includes("date") || h.includes("tgl"));
+          } else if (t === "no laporan" || t === "no tugas") {
+            idx = row.findIndex(h => (h.includes("no") && (h.includes("lap") || h.includes("tug"))) || h === "id" || h.includes("laporan id") || h.includes("id laporan") || h.includes("task id") || h.includes("id tugas"));
+          } else if (t === "nama regu") {
+            idx = row.findIndex(h => h.includes("regu") || h.includes("team"));
           }
           return idx;
         });
 
-        const matches = indices.filter(idx => idx !== -1).length;
+        // Filter out matches that point to the same column (sanity check)
+        const matchedIndices = new Set(indices.filter(i => i !== -1));
+        const matches = matchedIndices.size;
+        
         if (matches > maxMatches) {
           maxMatches = matches;
           bestRowIdx = r;
           bestIndices = indices;
         }
-        if (matches === targets.length) break;
+        if (matches >= targets.length - 1) break; // Good enough
       }
+      
       return maxMatches > 0 ? { headerRowIdx: bestRowIdx, colIndices: bestIndices } : { headerRowIdx: -1, colIndices: targets.map(() => -1) };
     };
 
@@ -252,23 +339,20 @@ export class GoogleSheetsService {
       });
     }
 
-    // 3. Aggregate WO data (Column K: Name, Column AQ: CCTV, Column R: Date, Column N: No Laporan, Column J: Nama Regu)
+    // 3. Aggregate WO data
     const { headerRowIdx: woHeaderIdx, colIndices: woCols } = findHeaderAndCols(woRows, ["nama petugas", "cctv", "tanggal", "no laporan", "nama regu", "ulp"]);
-    const woNameIdx = woCols[0] !== -1 ? woCols[0] : 10; // Column K
-    const woCctvIdx = woCols[1] !== -1 ? woCols[1] : 42; // Column AQ
-    const woDateIdx = woCols[2] !== -1 ? woCols[2] : 17; // Column R (index 17)
-    const woIdIdx = woCols[3] !== -1 ? woCols[3] : 13;   // Column N (index 13)
-    const woReguIdx = woCols[4] !== -1 ? woCols[4] : 9;   // Column J (index 9)
+    const woNameIdx = woCols[0] !== -1 ? woCols[0] : 10;
+    const woCctvIdx = woCols[1] !== -1 ? woCols[1] : 42;
+    // Per user request: Filter WO using Column AR (43)
+    const woDateIdx = 43; 
+    const woIdIdx = woCols[3] !== -1 ? woCols[3] : 13;
+    const woReguIdx = woCols[4] !== -1 ? woCols[4] : 9;
     const woUlpIdx = woCols[5];
 
     const woDataStart = woHeaderIdx !== -1 ? woHeaderIdx + 1 : 0;
     
-    // Track unique reports at different levels
-    const globalWoReports = new Map<string, boolean>(); // reportId -> hasCctv
-    const officerWoReports = new Map<string, Map<string, boolean>>(); // officerName -> reportId -> hasCctv
-    
-    // We need to know which ULP an officer belongs to for ULP-level unique counting
-    // We'll use the officers list we built earlier
+    const globalWoReports = new Map<string, boolean>();
+    const officerWoReports = new Map<string, Map<string, boolean>>();
     const officerToUlp = new Map<string, string>();
     officers.forEach(o => {
       let ulpName = ulpMap.get(o.ulpId) || o.directUlp || "Unknown";
@@ -276,21 +360,25 @@ export class GoogleSheetsService {
       officerToUlp.set(cleanName(o.name), ulpName);
     });
 
-    const ulpWoReports = new Map<string, Map<string, boolean>>(); // ulpName -> reportId -> hasCctv
-    const officerWoRawStats = new Map<string, { total: number; cctv: number }>(); // officerName -> raw counts
+    const ulpWoReports = new Map<string, Map<string, boolean>>();
+    const officerWoRawStats = new Map<string, { total: number; cctv: number }>();
     const filteredWoRows: any[][] = [];
 
-    woRows.slice(woDataStart).forEach(row => {
-      if (row.length <= woNameIdx) return;
+    woRows.slice(woDataStart).forEach((row, rowIndex) => {
+      // Ensure row has enough columns for the date filter
+      if (row.length <= woDateIdx) return;
       
       const dateVal = String(row[woDateIdx] || "").trim();
       const rowDate = parseSheetDate(dateVal);
-      if (!isWithinRange(rowDate)) return;
+      
+      // If we are filtering by date, we must have a valid date
+      if (!isWithinRange(rowDate)) {
+        return;
+      }
 
       const name = cleanName(row[woNameIdx]);
       if (!name || name === "NAMAPETUGAS" || name === "NAME") return;
       
-      // Try to get ULP from row first, then fallback to officer mapping
       let ulpName = "Unknown";
       if (woUlpIdx !== -1 && row[woUlpIdx]) {
         ulpName = String(row[woUlpIdx]).trim();
@@ -301,34 +389,29 @@ export class GoogleSheetsService {
       const reguValue = String(row[woReguIdx] || "").trim();
       if (!isValidRegu(ulpName, reguValue)) return;
       
-      // Normalize ULP name for consistent mapping
       const displayUlpName = ulpName.toUpperCase().replace(/^POSKO ULP\s+/i, "").trim();
-
       const reportId = String(row[woIdIdx] || "").trim();
       if (!reportId) return;
 
       const cctvVal = row.length > woCctvIdx ? String(row[woCctvIdx] || "").trim().toUpperCase() : "";
       const isCctv = cctvVal.includes("CCTV");
 
-      // Collect filtered row
-      filteredWoRows.push(row);
+      // Fallback: If Column B (index 1) is empty but Column AR (43) has a value,
+      // the sheet might have shifted for newer rows. Ensure the detail row is robust.
+      // We only do this if index 1 was identified as a "date" or "no laporan" related field.
+      const modifiedRow = [...row];
+      const tglLaporIdx = woCols[2]; // Index identified as "tanggal"
+      if (tglLaporIdx !== -1 && tglLaporIdx !== woDateIdx && !modifiedRow[tglLaporIdx] && modifiedRow[woDateIdx]) {
+        modifiedRow[tglLaporIdx] = modifiedRow[woDateIdx];
+      }
 
-      // Global level (Unique)
+      filteredWoRows.push(modifiedRow);
       globalWoReports.set(reportId, (globalWoReports.get(reportId) || false) || isCctv);
-
-      // Officer level (Unique - for internal tracking if needed, but we'll use raw for display)
       if (!officerWoReports.has(name)) officerWoReports.set(name, new Map());
       const oReports = officerWoReports.get(name)!;
       oReports.set(reportId, (oReports.get(reportId) || false) || isCctv);
-
-      // Officer level (Raw - per user request)
       const raw = officerWoRawStats.get(name) || { total: 0, cctv: 0 };
-      officerWoRawStats.set(name, {
-        total: raw.total + 1,
-        cctv: raw.cctv + (isCctv ? 1 : 0)
-      });
-
-      // ULP level (Unique)
+      officerWoRawStats.set(name, { total: raw.total + 1, cctv: raw.cctv + (isCctv ? 1 : 0) });
       if (!ulpWoReports.has(displayUlpName)) ulpWoReports.set(displayUlpName, new Map());
       const uReports = ulpWoReports.get(displayUlpName)!;
       uReports.set(reportId, (uReports.get(reportId) || false) || isCctv);
@@ -362,34 +445,35 @@ export class GoogleSheetsService {
       ulpWoStatsMap.set(ulp, { total: t, cctv: c });
     });
 
-    // 4. Aggregate PO data (Column K: Name, Column Y: CCTV, Column O: Date, Column E: No Tugas, Column I: Nama Regu)
+    // 4. Aggregate PO data
     const { headerRowIdx: poHeaderIdx, colIndices: poCols } = findHeaderAndCols(poRows, ["nama petugas", "cctv", "tanggal", "no tugas", "nama regu", "ulp"]);
-    const poNameIdx = poCols[0] !== -1 ? poCols[0] : 10; // Column K
-    const poCctvIdx = poCols[1] !== -1 ? poCols[1] : 24; // Column Y
-    const poDateIdx = poCols[2] !== -1 ? poCols[2] : 14; // Column O (index 14)
-    const poIdIdx = poCols[3] !== -1 ? poCols[3] : 4;    // Column E (index 4)
-    const poReguIdx = poCols[4] !== -1 ? poCols[4] : 8;    // Column I (index 8)
+    const poNameIdx = poCols[0] !== -1 ? poCols[0] : 10;
+    const poCctvIdx = poCols[1] !== -1 ? poCols[1] : 24;
+    // Per user request: Filter PO using Column Z (25)
+    const poDateIdx = 25; 
+    const poIdIdx = poCols[3] !== -1 ? poCols[3] : 4;
+    const poReguIdx = poCols[4] !== -1 ? poCols[4] : 8;
     const poUlpIdx = poCols[5];
 
     const poDataStart = poHeaderIdx !== -1 ? poHeaderIdx + 1 : 0;
-    
     const globalPoTasks = new Map<string, boolean>();
     const officerPoTasks = new Map<string, Map<string, boolean>>();
     const ulpPoTasks = new Map<string, Map<string, boolean>>();
-    const officerPoRawStats = new Map<string, { total: number; cctv: number }>(); // officerName -> raw counts
+    const officerPoRawStats = new Map<string, { total: number; cctv: number }>();
     const filteredPoRows: any[][] = [];
 
-    poRows.slice(poDataStart).forEach(row => {
-      if (row.length <= poNameIdx) return;
-
+    poRows.slice(poDataStart).forEach((row, rowIndex) => {
+      if (row.length <= poDateIdx) return;
       const dateVal = String(row[poDateIdx] || "").trim();
       const rowDate = parseSheetDate(dateVal);
-      if (!isWithinRange(rowDate)) return;
+      
+      if (!isWithinRange(rowDate)) {
+        return;
+      }
 
       const name = cleanName(row[poNameIdx]);
       if (!name || name === "NAMAPETUGAS" || name === "NAME") return;
       
-      // Try to get ULP from row first, then fallback to officer mapping
       let ulpName = "Unknown";
       if (poUlpIdx !== -1 && row[poUlpIdx]) {
         ulpName = String(row[poUlpIdx]).trim();
@@ -399,39 +483,31 @@ export class GoogleSheetsService {
 
       const reguValue = String(row[poReguIdx] || "").trim();
       if (!isValidRegu(ulpName, reguValue)) return;
-
-      // Normalize ULP name for consistent mapping
       const displayUlpName = ulpName.toUpperCase().replace(/^POSKO ULP\s+/i, "").trim();
-
       const taskId = String(row[poIdIdx] || "").trim();
       if (!taskId) return;
 
       const cctvVal = row.length > poCctvIdx ? String(row[poCctvIdx] || "").trim().toUpperCase() : "";
       const isCctv = cctvVal.includes("CCTV");
 
-      // Collect filtered row
-      filteredPoRows.push(row);
+      const modifiedRow = [...row];
+      const tglPoIdx = poCols[2]; // Index identified as "tanggal"
+      if (tglPoIdx !== -1 && tglPoIdx !== poDateIdx && !modifiedRow[tglPoIdx] && modifiedRow[poDateIdx]) {
+        modifiedRow[tglPoIdx] = modifiedRow[poDateIdx];
+      }
 
-      // Global level (Unique)
+      filteredPoRows.push(modifiedRow);
       globalPoTasks.set(taskId, (globalPoTasks.get(taskId) || false) || isCctv);
-
-      // Officer level (Unique)
       if (!officerPoTasks.has(name)) officerPoTasks.set(name, new Map());
       const oTasks = officerPoTasks.get(name)!;
       oTasks.set(taskId, (oTasks.get(taskId) || false) || isCctv);
-
-      // Officer level (Raw - per user request)
       const raw = officerPoRawStats.get(name) || { total: 0, cctv: 0 };
-      officerPoRawStats.set(name, {
-        total: raw.total + 1,
-        cctv: raw.cctv + (isCctv ? 1 : 0)
-      });
-
-      // ULP level (Unique)
+      officerPoRawStats.set(name, { total: raw.total + 1, cctv: raw.cctv + (isCctv ? 1 : 0) });
       if (!ulpPoTasks.has(displayUlpName)) ulpPoTasks.set(displayUlpName, new Map());
       const uTasks = ulpPoTasks.get(displayUlpName)!;
       uTasks.set(taskId, (uTasks.get(taskId) || false) || isCctv);
     });
+
 
     // Calculate PO Stats
     let totalPoCount = 0;

@@ -30,6 +30,112 @@ export function DetailModal({ isOpen, onClose, title, headers, rows }: DetailMod
     document.body.removeChild(link);
   };
 
+  const isDateColumn = (header: string) => {
+    const h = header.toUpperCase();
+    return h.includes('TGL') || h.includes('TANGGAL') || h.includes('DATE') || h.includes('TIME') || h.includes('CHECK IN') || h.includes('JAM');
+  };
+
+  const formatCellValue = (value: any, header: string) => {
+    if (value === null || value === undefined) return '';
+    const str = String(value).trim();
+    if (!str) return '';
+
+    if (isDateColumn(header)) {
+      // 1. Handle serial dates (numeric)
+      // Standardize comma to dot for parsing
+      const normalizedStr = str.replace(',', '.');
+      // Look for a numeric value that represents a serial date
+      // Era 2020-2030 is roughly 43831 to 51136. 0.xxx are time-only serials.
+      if (/^\d{5}(\.\d+)?$/.test(normalizedStr) || (/^0\.\d+$/.test(normalizedStr)) || (/^\d+\.\d+$/.test(normalizedStr) && parseFloat(normalizedStr) > 30000)) {
+        const serial = parseFloat(normalizedStr);
+        const date = new Date(Math.round((serial - 25569) * 86400 * 1000));
+        
+        // If it's a pure time serial (< 1), only show time
+        const showDate = serial >= 1;
+        
+        return date.toLocaleString('id-ID', {
+          day: showDate ? '2-digit' : undefined,
+          month: showDate ? '2-digit' : undefined,
+          year: showDate ? 'numeric' : undefined,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        }).replace(/\./g, ':');
+      }
+
+      const parseManual = (s: string) => {
+        const months: Record<string, number> = {
+          'januari': 0, 'februari': 1, 'maret': 2, 'april': 3, 'juni': 5,
+          'juli': 6, 'agustus': 7, 'september': 8, 'oktober': 9, 'november': 10, 'desember': 11,
+          'jan': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'mei': 4, 'jun': 5, 'jul': 6, 'agu': 7, 'sep': 8, 'okt': 9, 'nov': 10, 'des': 11
+        };
+        
+        // Separate date and time by searching for first space or T (ISO)
+        let dateStr = s;
+        let timeStr = '';
+        const spaceIdx = s.indexOf(' ');
+        const tIdx = s.indexOf('T');
+        const splitIdx = spaceIdx !== -1 ? spaceIdx : (tIdx !== -1 ? tIdx : -1);
+        
+        if (splitIdx !== -1) {
+          dateStr = s.substring(0, splitIdx).trim();
+          timeStr = s.substring(splitIdx + 1).trim();
+        }
+
+        const dateParts = dateStr.toLowerCase().split(/[-/.\s,]+/);
+        if (dateParts.length >= 3) {
+          let day = parseInt(dateParts[0]);
+          let monthStr = dateParts[1];
+          let month = months[monthStr];
+          let year = parseInt(dateParts[2]);
+          
+          if (isNaN(month)) {
+            month = parseInt(monthStr) - 1;
+          }
+
+          if (isNaN(month) || month < 0 || month > 11) {
+            // Try YYYY-MM-DD
+            day = parseInt(dateParts[2]);
+            monthStr = dateParts[1];
+            month = months[monthStr];
+            if (isNaN(month)) month = parseInt(monthStr) - 1;
+            year = parseInt(dateParts[0]);
+          }
+
+          if (!isNaN(day) && !isNaN(month) && !isNaN(year) && year > 1900) {
+            const date = new Date(year, month, day);
+            
+            // Handle time part
+            if (timeStr) {
+               const timeMatch = timeStr.match(/(\d{1,2})[:.](\d{1,2})([:.](\d{1,2}))?/);
+               if (timeMatch) {
+                 date.setHours(parseInt(timeMatch[1]), parseInt(timeMatch[2]), parseInt(timeMatch[4] || '0'));
+               }
+            }
+            return date;
+          }
+        }
+        return null;
+      };
+
+      const d = parseManual(str) || new Date(str);
+      if (d instanceof Date && !isNaN(d.getTime())) {
+        return d.toLocaleString('id-ID', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        }).replace(/\./g, ':');
+      }
+    }
+
+    return str;
+  };
+
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 md:p-10">
@@ -94,7 +200,7 @@ export function DetailModal({ isOpen, onClose, title, headers, rows }: DetailMod
                       <tr key={i} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors">
                         {row.map((cell, j) => (
                           <td key={j} className="px-4 py-3 text-[11px] font-medium text-gray-700 whitespace-nowrap border-r border-gray-100 last:border-0">
-                            {String(cell || '')}
+                            {formatCellValue(cell, headers[j])}
                           </td>
                         ))}
                       </tr>

@@ -18,10 +18,61 @@ import { Loader2 } from 'lucide-react';
 
 export default function App() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedUlp, setSelectedUlp] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+
+  const formatDateForQuery = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Set default date range to current month on initial load
+  useEffect(() => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    setStartDate(formatDateForQuery(firstDay));
+    setEndDate(formatDateForQuery(now));
+  }, []);
+
+  // Memoized filter logic
+  const filteredData = React.useMemo(() => {
+    if (!data) return null;
+    
+    return {
+      ...data,
+      ulpPerformance: (selectedUlp 
+        ? data.ulpPerformance.filter(u => u.ulp === selectedUlp)
+        : data.ulpPerformance
+      ).sort((a, b) => {
+        const avgA = (parseFloat(a.persenWo) || 0) + (parseFloat(a.persenPo) || 0);
+        const avgB = (parseFloat(b.persenWo) || 0) + (parseFloat(b.persenPo) || 0);
+        return avgB - avgA;
+      }),
+      officerPerformance: (selectedUlp
+        ? data.officerPerformance.filter(o => o.ulp === selectedUlp)
+        : data.officerPerformance
+      ).sort((a, b) => {
+        const avgA = (parseFloat(a.persenWo) || 0) + (parseFloat(a.persenPo) || 0);
+        const avgB = (parseFloat(b.persenWo) || 0) + (parseFloat(b.persenPo) || 0);
+        return avgB - avgA;
+      }),
+      summary: selectedUlp 
+        ? {
+            ...data.summary,
+            totalBaca: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.jumlahWoTotal, 0),
+            totalValid: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.totalWoPakaiCctv, 0),
+            totalPo: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.jumlahPoTotal, 0),
+            totalPoCctv: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.totalPoPakaiCctv, 0),
+            dataAktif: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.jumlahPoTotal, 0),
+          }
+        : data.summary
+    };
+  }, [data, selectedUlp]);
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -31,6 +82,9 @@ export default function App() {
 
   // Admin Panel State
   const [adminOpen, setAdminOpen] = useState(false);
+
+  // Filter logic options
+  const ulpList = React.useMemo(() => data ? Array.from(new Set(data.ulpPerformance.map(u => u.ulp))).sort() : [], [data]);
 
   const handleDetailClick = (type: 'WO' | 'PO', identifier: string, isUlp: boolean, isCctv: boolean) => {
     if (!data) return;
@@ -85,27 +139,27 @@ export default function App() {
   };
 
   useEffect(() => {
-    const loadData = async () => {
+    const loadData = async (showLoading = false) => {
+      if (showLoading) setIsRefreshing(true);
       try {
         const result = await GoogleSheetsService.fetchData(startDate, endDate);
-        
-        // Check if we actually got any data
         const hasData = result.officerPerformance.length > 0 || result.summary.dataAktif > 0;
         if (!hasData) {
-          setError("Tidak ada data yang ditemukan untuk rentang tanggal ini. Pastikan format tanggal di Google Sheets sudah benar.");
+          setError("Tidak ada data yang ditemukan untuk rentang tanggal ini.");
         } else {
           setError(null);
         }
-        
         setData(result);
       } catch (err) {
         console.error("Failed to fetch data:", err);
-        setError("Gagal menghubungkan ke Google Sheets. Periksa koneksi internet atau pengaturan berbagi spreadsheet.");
+        setError("Gagal menghubungkan ke Google Sheets.");
+      } finally {
+        setIsRefreshing(false);
       }
     };
 
-    loadData();
-    const interval = setInterval(loadData, 30000); // Refresh every 30s
+    loadData(!data);
+    const interval = setInterval(() => loadData(false), 30000);
     return () => clearInterval(interval);
   }, [startDate, endDate]);
 
@@ -134,43 +188,30 @@ export default function App() {
     );
   }
 
-  if (!data) return null;
-
-  // Filter logic
-  const ulpList = Array.from(new Set(data.ulpPerformance.map(u => u.ulp))).sort();
-  
-  const filteredData = {
-    ...data,
-    ulpPerformance: (selectedUlp 
-      ? data.ulpPerformance.filter(u => u.ulp === selectedUlp)
-      : data.ulpPerformance
-    ).sort((a, b) => {
-      const avgA = (parseFloat(a.persenWo) || 0) + (parseFloat(a.persenPo) || 0);
-      const avgB = (parseFloat(b.persenWo) || 0) + (parseFloat(b.persenPo) || 0);
-      return avgB - avgA;
-    }),
-    officerPerformance: (selectedUlp
-      ? data.officerPerformance.filter(o => o.ulp === selectedUlp)
-      : data.officerPerformance
-    ).sort((a, b) => {
-      const avgA = (parseFloat(a.persenWo) || 0) + (parseFloat(a.persenPo) || 0);
-      const avgB = (parseFloat(b.persenWo) || 0) + (parseFloat(b.persenPo) || 0);
-      return avgB - avgA;
-    }),
-    summary: selectedUlp 
-      ? {
-          ...data.summary,
-          totalBaca: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.jumlahWoTotal, 0),
-          totalValid: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.totalWoPakaiCctv, 0),
-          totalPo: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.jumlahPoTotal, 0),
-          totalPoCctv: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.totalPoPakaiCctv, 0),
-          dataAktif: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.jumlahPoTotal, 0),
-        }
-      : data.summary
-  };
+  if (!data) {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#0a1128] text-white">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-4">
+          <Loader2 className="w-12 h-12 text-brand-primary animate-spin" />
+          <h2 className="text-xl font-black tracking-widest uppercase">MEMUAT DATA...</h2>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col relative overflow-hidden">
+      {isRefreshing && (
+        <div className="fixed top-0 left-0 w-full h-1 z-[100]">
+          <motion.div 
+            initial={{ x: "-100%" }} 
+            animate={{ x: "100%" }} 
+            transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+            className="h-full bg-brand-accent w-full"
+          />
+        </div>
+      )}
+
       <Header onAdminClick={() => setAdminOpen(true)} />
       <SubHeader 
         lastSync={data.summary.lastSync} 
@@ -185,38 +226,49 @@ export default function App() {
       />
       
       <main className="flex-1 p-6 flex flex-col gap-6 overflow-x-hidden">
-        {/* Top Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[600px]">
-          {/* Left Column - WO UP3 & ULP Cards */}
-          <div className="lg:col-span-3 flex flex-col">
-            <WOUP3Card 
-              totalWo={filteredData.summary.totalBaca} 
-              totalWoCctv={filteredData.summary.totalValid} 
-            />
-            <ULPStatsCard ulpData={filteredData.ulpPerformance} />
-          </div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={startDate + endDate + selectedUlp}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3 }}
+            className={isRefreshing ? "opacity-50 pointer-events-none transition-opacity" : "transition-opacity"}
+          >
+            {/* Top Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[600px]">
+              {/* Left Column - WO UP3 & ULP Cards */}
+              <div className="lg:col-span-3 flex flex-col">
+                <WOUP3Card 
+                  totalWo={filteredData?.summary.totalBaca || 0} 
+                  totalWoCctv={filteredData?.summary.totalValid || 0} 
+                />
+                <ULPStatsCard ulpData={filteredData?.ulpPerformance || []} />
+              </div>
 
-          {/* Center Column - Performance Tables */}
-          <div className="lg:col-span-6 flex flex-col gap-6">
-            <PerformanceTable 
-              data={filteredData.officerPerformance} 
-              onDetailClick={(type, name, isCctv) => handleDetailClick(type, name, false, isCctv)}
-            />
-            <ULPPerformanceTable 
-              data={filteredData.ulpPerformance} 
-              onDetailClick={(type, ulp, isCctv) => handleDetailClick(type, ulp, true, isCctv)}
-            />
-          </div>
+              {/* Center Column - Performance Tables */}
+              <div className="lg:col-span-6 flex flex-col gap-6">
+                <PerformanceTable 
+                  data={filteredData?.officerPerformance || []} 
+                  onDetailClick={(type, name, isCctv) => handleDetailClick(type, name, false, isCctv)}
+                />
+                <ULPPerformanceTable 
+                  data={filteredData?.ulpPerformance || []} 
+                  onDetailClick={(type, ulp, isCctv) => handleDetailClick(type, ulp, true, isCctv)}
+                />
+              </div>
 
-          {/* Right Column - PO UP3 & ULP Cards */}
-          <div className="lg:col-span-3 flex flex-col">
-            <POUP3Card 
-              totalPo={filteredData.summary.totalPo} 
-              totalPoCctv={filteredData.summary.totalPoCctv} 
-            />
-            <ULPPOStatsCard ulpData={filteredData.ulpPerformance} />
-          </div>
-        </div>
+              {/* Right Column - PO UP3 & ULP Cards */}
+              <div className="lg:col-span-3 flex flex-col">
+                <POUP3Card 
+                  totalPo={filteredData?.summary.totalPo || 0} 
+                  totalPoCctv={filteredData?.summary.totalPoCctv || 0} 
+                />
+                <ULPPOStatsCard ulpData={filteredData?.ulpPerformance || []} />
+              </div>
+            </div>
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       <DetailModal 
