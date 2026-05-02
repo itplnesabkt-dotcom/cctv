@@ -548,7 +548,7 @@ export class GoogleSheetsService {
       ulpName = ulpName.replace(/^POSKO ULP\s+/i, "").trim();
 
       const calculatePercent = (num: number, den: number) => {
-        if (den === 0) return "0%";
+        if (den === 0) return "100%";
         return `${Math.round((num / den) * 100)}%`;
       };
 
@@ -576,9 +576,7 @@ export class GoogleSheetsService {
     })));
 
     const calculatePercent = (num: number, den: number) => {
-      if (den === 0) {
-        return num === 0 ? "100%" : "#DIV/0!";
-      }
+      if (den === 0) return "100%";
       return `${Math.round((num / den) * 100)}%`;
     };
 
