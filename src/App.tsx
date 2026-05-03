@@ -11,6 +11,7 @@ import { CCTVUsageTable } from './components/CCTVUsageTable.tsx';
 import { DataTable } from './components/DataTable.tsx';
 import { DetailModal } from './components/DetailModal.tsx';
 import { AdminPanel } from './components/AdminPanelComponent.tsx';
+import { OverSLAPage } from './components/OverSLAPage.tsx';
 import { GoogleSheetsService } from './services/googleSheetsService.ts';
 import { DashboardData } from './types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -23,6 +24,7 @@ export default function App() {
   const [selectedUlp, setSelectedUlp] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [activeTab, setActiveTab] = useState<'CCTV' | 'OVER_SLA'>('CCTV');
 
   const formatDateForQuery = (date: Date) => {
     const year = date.getFullYear();
@@ -212,7 +214,11 @@ export default function App() {
         </div>
       )}
 
-      <Header onAdminClick={() => setAdminOpen(true)} />
+      <Header 
+        onAdminClick={() => setAdminOpen(true)} 
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
       <SubHeader 
         lastSync={data.summary.lastSync} 
         dataAktif={data.summary.dataAktif} 
@@ -223,50 +229,54 @@ export default function App() {
         endDate={endDate}
         onStartDateChange={setStartDate}
         onEndDateChange={setEndDate}
+        activeTab={activeTab}
       />
       
       <main className="flex-1 p-6 flex flex-col gap-6 overflow-x-hidden">
         <AnimatePresence mode="wait">
           <motion.div
-            key={startDate + endDate + selectedUlp}
+            key={startDate + endDate + selectedUlp + activeTab}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.3 }}
             className={isRefreshing ? "opacity-50 pointer-events-none transition-opacity" : "transition-opacity"}
           >
-            {/* Top Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[600px]">
-              {/* Left Column - WO UP3 & ULP Cards */}
-              <div className="lg:col-span-3 flex flex-col">
-                <WOUP3Card 
-                  totalWo={filteredData?.summary.totalBaca || 0} 
-                  totalWoCctv={filteredData?.summary.totalValid || 0} 
-                />
-                <ULPStatsCard ulpData={filteredData?.ulpPerformance || []} />
-              </div>
+            {activeTab === 'CCTV' ? (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[600px]">
+                {/* Left Column - WO UP3 & ULP Cards */}
+                <div className="lg:col-span-3 flex flex-col">
+                  <WOUP3Card 
+                    totalWo={filteredData?.summary.totalBaca || 0} 
+                    totalWoCctv={filteredData?.summary.totalValid || 0} 
+                  />
+                  <ULPStatsCard ulpData={filteredData?.ulpPerformance || []} />
+                </div>
 
-              {/* Center Column - Performance Tables */}
-              <div className="lg:col-span-6 flex flex-col gap-6">
-                <PerformanceTable 
-                  data={filteredData?.officerPerformance || []} 
-                  onDetailClick={(type, name, isCctv) => handleDetailClick(type, name, false, isCctv)}
-                />
-                <ULPPerformanceTable 
-                  data={filteredData?.ulpPerformance || []} 
-                  onDetailClick={(type, ulp, isCctv) => handleDetailClick(type, ulp, true, isCctv)}
-                />
-              </div>
+                {/* Center Column - Performance Tables */}
+                <div className="lg:col-span-6 flex flex-col gap-6">
+                  <PerformanceTable 
+                    data={filteredData?.officerPerformance || []} 
+                    onDetailClick={(type, name, isCctv) => handleDetailClick(type, name, false, isCctv)}
+                  />
+                  <ULPPerformanceTable 
+                    data={filteredData?.ulpPerformance || []} 
+                    onDetailClick={(type, ulp, isCctv) => handleDetailClick(type, ulp, true, isCctv)}
+                  />
+                </div>
 
-              {/* Right Column - PO UP3 & ULP Cards */}
-              <div className="lg:col-span-3 flex flex-col">
-                <POUP3Card 
-                  totalPo={filteredData?.summary.totalPo || 0} 
-                  totalPoCctv={filteredData?.summary.totalPoCctv || 0} 
-                />
-                <ULPPOStatsCard ulpData={filteredData?.ulpPerformance || []} />
+                {/* Right Column - PO UP3 & ULP Cards */}
+                <div className="lg:col-span-3 flex flex-col">
+                  <POUP3Card 
+                    totalPo={filteredData?.summary.totalPo || 0} 
+                    totalPoCctv={filteredData?.summary.totalPoCctv || 0} 
+                  />
+                  <ULPPOStatsCard ulpData={filteredData?.ulpPerformance || []} />
+                </div>
               </div>
-            </div>
+            ) : (
+              <OverSLAPage data={filteredData?.overSla || data.overSla} />
+            )}
           </motion.div>
         </AnimatePresence>
       </main>

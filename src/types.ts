@@ -26,12 +26,28 @@ export interface DashboardData {
     lastSync: string;
     dataAktif: number;
   };
+  overSla: OverSLAData;
   rawWoRows: any[][];
   rawPoRows: any[][];
   woHeaders: string[];
   poHeaders: string[];
-  woIndices: { name: number; ulp: number; cctv: number };
+  woIndices: { name: number; ulp: number; cctv: number; tglLapor: number; tglPengerjaan: number; tglSelesai: number; source: number; reporter: number; shift: number };
   poIndices: { name: number; ulp: number; cctv: number };
+}
+
+export interface OverSLAData {
+  totalGangguan: number;
+  highestRpt: number;
+  highestRct: number;
+  countRptOver30: number;
+  countRptOver45: number;
+  avgRpt: number;
+  avgRct: number;
+  woOverSlaRptList: any[][]; // Table data: No Laporan, Tgl Lapor, Nama Petugas, RPT, RCT
+  shiftDistribution: { name: string; value: number }[];
+  officerOverSlaRpt: { name: string; count: number }[];
+  officerOverSlaRct: { name: string; count: number }[];
+  ulpDistribution: { name: string; value: number }[];
 }
 
 export interface UnitRecap {

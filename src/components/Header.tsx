@@ -3,9 +3,11 @@ import { LayoutGrid, FileText, Scissors, Zap, Wallet, BarChart2, ShieldCheck, Se
 
 interface HeaderProps {
   onAdminClick: () => void;
+  activeTab: 'CCTV' | 'OVER_SLA';
+  onTabChange: (tab: 'CCTV' | 'OVER_SLA') => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onAdminClick }) => {
+export const Header: React.FC<HeaderProps> = ({ onAdminClick, activeTab, onTabChange }) => {
   return (
     <header className="bg-[#0a1128] text-white h-16 flex items-center justify-between px-6 sticky top-0 z-50">
       <div className="flex items-center gap-4">
@@ -24,7 +26,18 @@ export const Header: React.FC<HeaderProps> = ({ onAdminClick }) => {
       </div>
 
       <nav className="flex items-center gap-1">
-        <NavItem icon={<LayoutGrid size={16} />} label="CCTV" active />
+        <NavItem 
+          icon={<LayoutGrid size={16} />} 
+          label="CCTV" 
+          active={activeTab === 'CCTV'} 
+          onClick={() => onTabChange('CCTV')}
+        />
+        <NavItem 
+          icon={<BarChart2 size={16} />} 
+          label="OVER SLA" 
+          active={activeTab === 'OVER_SLA'} 
+          onClick={() => onTabChange('OVER_SLA')}
+        />
         <NavItem icon={<ShieldCheck size={16} />} label="ADMIN" onClick={onAdminClick} />
       </nav>
 

@@ -11,6 +11,7 @@ interface SubHeaderProps {
   endDate: string;
   onStartDateChange: (date: string) => void;
   onEndDateChange: (date: string) => void;
+  activeTab: 'CCTV' | 'OVER_SLA';
 }
 
 export const SubHeader: React.FC<SubHeaderProps> = ({ 
@@ -22,7 +23,8 @@ export const SubHeader: React.FC<SubHeaderProps> = ({
   startDate,
   endDate,
   onStartDateChange,
-  onEndDateChange
+  onEndDateChange,
+  activeTab
 }) => {
   return (
     <div className="bg-white border-b border-gray-200 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
@@ -30,7 +32,11 @@ export const SubHeader: React.FC<SubHeaderProps> = ({
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-6 bg-brand-secondary rounded-full" />
           <h2 className="text-2xl font-black italic tracking-tighter text-brand-primary">
-            MONITORING <span className="text-brand-secondary">CCTV</span>
+            {activeTab === 'CCTV' ? (
+              <>MONITORING <span className="text-brand-secondary">CCTV</span></>
+            ) : (
+              <>MONITORING <span className="text-brand-secondary">OVER SLA RPT DAN RCT</span></>
+            )}
           </h2>
         </div>
         
