@@ -124,7 +124,7 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
               <BarChart data={data.ulpDistribution} layout="vertical" margin={{ left: -20, right: 30 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} strokeOpacity={0.05} />
                 <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" width={100} fontSize={9} stroke="#888" tickFormatter={(v) => v.split(' ').pop()} />
+                <YAxis dataKey="name" type="category" width={100} fontSize={9} stroke="#888" />
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#fff', border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                   itemStyle={{ fontSize: '10px', fontWeight: 'bold' }}

@@ -25,6 +25,11 @@ export default function App() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [activeTab, setActiveTab] = useState<'CCTV' | 'OVER_SLA'>('CCTV');
+  
+  // Clear filter when changing tabs since the filter source (ULP vs Posko) changes
+  useEffect(() => {
+    setSelectedUlp("");
+  }, [activeTab]);
 
   const formatDateForQuery = (date: Date) => {
     const year = date.getFullYear();
@@ -86,7 +91,11 @@ export default function App() {
   const [adminOpen, setAdminOpen] = useState(false);
 
   // Filter logic options
-  const ulpList = React.useMemo(() => data ? Array.from(new Set(data.ulpPerformance.map(u => u.ulp))).sort() : [], [data]);
+  const filterList = React.useMemo(() => {
+    if (!data) return [];
+    if (activeTab === 'OVER_SLA') return data.allPoskos || [];
+    return data.allUlps || [];
+  }, [data, activeTab]);
 
   const handleDetailClick = (type: 'WO' | 'PO', identifier: string, isUlp: boolean, isCctv: boolean) => {
     if (!data) return;
@@ -144,7 +153,7 @@ export default function App() {
     const loadData = async (showLoading = false) => {
       if (showLoading) setIsRefreshing(true);
       try {
-        const result = await GoogleSheetsService.fetchData(startDate, endDate);
+        const result = await GoogleSheetsService.fetchData(startDate, endDate, selectedUlp);
         const hasData = result.officerPerformance.length > 0 || result.summary.dataAktif > 0;
         if (!hasData) {
           setError("Tidak ada data yang ditemukan untuk rentang tanggal ini.");
@@ -163,7 +172,7 @@ export default function App() {
     loadData(!data);
     const interval = setInterval(() => loadData(false), 30000);
     return () => clearInterval(interval);
-  }, [startDate, endDate]);
+  }, [startDate, endDate, selectedUlp]);
 
   if (error && !data) {
     return (
@@ -224,7 +233,7 @@ export default function App() {
         dataAktif={data.summary.dataAktif} 
         selectedUlp={selectedUlp}
         onUlpChange={setSelectedUlp}
-        ulpList={ulpList}
+        ulpList={filterList}
         startDate={startDate}
         endDate={endDate}
         onStartDateChange={setStartDate}

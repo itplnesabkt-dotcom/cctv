@@ -26,6 +26,8 @@ export interface DashboardData {
     lastSync: string;
     dataAktif: number;
   };
+  allUlps: string[];
+  allPoskos: string[];
   overSla: OverSLAData;
   rawWoRows: any[][];
   rawPoRows: any[][];
