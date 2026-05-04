@@ -351,8 +351,22 @@ export class GoogleSheetsService {
     // Determine official ULPs list beforehand for REGEX-style matching
     const allUlps = Array.from(new Set(officers.map(o => {
       let ulpName = (ulpMap.get(o.ulpId) || o.directUlp || "Unknown").toUpperCase().trim();
-      return ulpName;
+      return ulpName.replace(/^ULP\s+/i, ""); // Standardize to base name if it starts with ULP
     }))).filter(u => u !== "UNKNOWN");
+
+    const getExpectedRegu = (ulpName: string) => {
+      const u = ulpName.toUpperCase().trim();
+      switch (u) {
+        case "BUKITTINGGI": return "BUKITTINGGI";
+        case "PADANG PANJANG": return "PADANGPANJANG";
+        case "LUBUK SIKAPING": return "LUBUK SIKAPING";
+        case "LUBUK BASUNG": return "LUBUK BASUNG";
+        case "SIMPANG EMPAT": return "SIMPANG EMPAT";
+        case "BASO": return "BASO";
+        case "KOTO TUO": return "KOTOTUO";
+        default: return u;
+      }
+    };
 
     // 2. Date ranges
     const sDate = startDate ? (() => { const [y, m, d] = startDate.split('-').map(Number); return new Date(y, m - 1, d); })() : null;
@@ -491,13 +505,18 @@ export class GoogleSheetsService {
       if (!officerWoReports.has(nameKey)) officerWoReports.set(nameKey, new Map());
       officerWoReports.get(nameKey)!.set(reportId, (officerWoReports.get(nameKey)!.get(reportId) || false) || isCctv);
       
-      // REGEXMATCH-style ULP aggregation: find matching official ULP
-      const rowUlpContext = (displayUlpName + " " + String(row[3] || "")).toUpperCase();
-      const matchedUlp = allUlps.find(u => rowUlpContext.includes(u.toUpperCase()));
-      const aggregatedUlpKey = matchedUlp || displayUlpName;
+      // Formula-style ULP aggregation: Match against each official ULP
+      const rowD = String(row[3] || "").toUpperCase();
+      const rowJ = String(row[woReguIdx] || "").toUpperCase().trim();
 
-      if (!ulpWoReports.has(aggregatedUlpKey)) ulpWoReports.set(aggregatedUlpKey, new Map());
-      ulpWoReports.get(aggregatedUlpKey)!.set(reportId, (ulpWoReports.get(aggregatedUlpKey)!.get(reportId) || false) || isCctv);
+      allUlps.forEach(targetUlp => {
+        const expectedRegu = getExpectedRegu(targetUlp);
+        // Logic: REGEXMATCH(D, targetUlp) AND J == expectedRegu
+        if (rowD.includes(targetUlp.toUpperCase()) && rowJ === expectedRegu) {
+          if (!ulpWoReports.has(targetUlp)) ulpWoReports.set(targetUlp, new Map());
+          ulpWoReports.get(targetUlp)!.set(reportId, (ulpWoReports.get(targetUlp)!.get(reportId) || false) || isCctv);
+        }
+      });
     });
 
     // Calculate WO Stats
@@ -571,13 +590,18 @@ export class GoogleSheetsService {
       const raw = officerPoRawStats.get(nameKey) || { total: 0, cctv: 0 };
       officerPoRawStats.set(nameKey, { total: raw.total + 1, cctv: raw.cctv + (isCctv ? 1 : 0) });
       
-      // REGEXMATCH-style ULP aggregation
-      const rowUlpContext = (displayUlpName + " " + String(row[poUlpIdx] || "")).toUpperCase();
-      const matchedUlp = allUlps.find(u => rowUlpContext.includes(u.toUpperCase()));
-      const aggregatedUlpKey = matchedUlp || displayUlpName;
+      // Formula-style ULP aggregation: Match against each official ULP
+      const rowColD_PO = String(row[3] || "").toUpperCase(); // Using Column D for REGEXMATCH
+      const rowRegu_PO = String(row[poReguIdx] || "").toUpperCase().trim();
 
-      if (!ulpPoTasks.has(aggregatedUlpKey)) ulpPoTasks.set(aggregatedUlpKey, new Map());
-      ulpPoTasks.get(aggregatedUlpKey)!.set(taskId, (ulpPoTasks.get(aggregatedUlpKey)!.get(taskId) || false) || isCctv);
+      allUlps.forEach(targetUlp => {
+        const expectedRegu = getExpectedRegu(targetUlp);
+        // Logic for PO: REGEXMATCH(D, targetUlp) AND Regu == expectedRegu
+        if (rowColD_PO.includes(targetUlp.toUpperCase()) && rowRegu_PO === expectedRegu) {
+          if (!ulpPoTasks.has(targetUlp)) ulpPoTasks.set(targetUlp, new Map());
+          ulpPoTasks.get(targetUlp)!.set(taskId, (ulpPoTasks.get(targetUlp)!.get(taskId) || false) || isCctv);
+        }
+      });
     });
 
 
