@@ -12,35 +12,44 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
   const COLORS = ['#26C6DA', '#FFD700', '#9C27B0', '#4CAF50', '#F44336', '#FF9800'];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 p-6 bg-sky-100 rounded-2xl min-h-full">
       {/* Top Section - 3 Columns */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column - Summary Cards (col-span-2) */}
         <div className="lg:col-span-2 flex flex-col gap-3">
-          <StatCard label="TOTAL JUMLAH GANGGUAN" value={data.totalGangguan} color="#4CAF50" />
-          <StatCard label="DURASI RPT TERTINGGI" value={data.highestRpt} color="#FF7043" />
-          <StatCard label="DURASI RCT TERTINGGI" value={data.highestRct} color="#616161" />
-          <StatCard label="WO RPT > 30 MNT" value={data.countRptOver30} color="#1565C0" />
-          <StatCard label="WO RPT > 45 MNT" value={data.countRptOver45} color="#C62828" />
-          <StatCard label="RATA-RATA RPT" value={data.avgRpt} color="#43A047" />
-          <StatCard label="RATA-RATA RCT" value={data.avgRct} color="#2E7D32" />
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
+            <div className="px-4 py-2 bg-orange-500 text-white flex items-center gap-2">
+              <h4 className="text-[10px] font-black italic tracking-tighter uppercase">RINGKASAN DATA</h4>
+            </div>
+            <div className="p-3 flex flex-col gap-3">
+              <StatCard label="TOTAL JUMLAH GANGGUAN" value={data.totalGangguan} color="#4CAF50" />
+              <StatCard label="DURASI RPT TERTINGGI" value={data.highestRpt} color="#FF7043" />
+              <StatCard label="DURASI RCT TERTINGGI" value={data.highestRct} color="#616161" />
+              <StatCard label="WO RPT > 30 MNT" value={data.countRptOver30} color="#1565C0" />
+              <StatCard label="WO RPT > 45 MNT" value={data.countRptOver45} color="#C62828" />
+              <StatCard label="RATA-RATA RPT" value={data.avgRpt} color="#43A047" />
+              <StatCard label="RATA-RATA RCT" value={data.avgRct} color="#2E7D32" />
+            </div>
+          </div>
+          
           <SmallTable 
             title="SEBARAN WO" 
             subtitle="PER SHIFT" 
             headers={['SHIFT', 'JML_BON']}
             data={data.shiftDistribution.map(s => [s.name, s.value.toLocaleString()])}
             color="#FFA726"
+            headerBg="bg-orange-500"
           />
         </div>
 
         {/* Center Column - Large Table (col-span-6) */}
         <div className="lg:col-span-6">
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden flex flex-col shadow-sm h-full">
-            <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between bg-brand-secondary/10">
+            <div className="px-6 py-4 flex items-center justify-between bg-green-600 text-white">
               <div className="flex items-center gap-3">
-                <div className="w-1.5 h-6 bg-brand-secondary rounded-full" />
-                <h3 className="text-sm font-black italic tracking-tighter text-brand-primary uppercase">
-                  DAFTAR WO <span className="text-brand-secondary">OVER SLA RPT</span>
+                <div className="w-1.5 h-6 bg-white/30 rounded-full" />
+                <h3 className="text-sm font-black italic tracking-tighter uppercase">
+                  DAFTAR WO <span className="text-green-100">OVER SLA RPT</span>
                 </h3>
               </div>
             </div>
@@ -95,6 +104,7 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
             data={data.officerOverSlaRpt.map(o => [o.name, o.count])}
             color="#EF5350"
             highlightCol={1}
+            headerBg="bg-red-600"
           />
 
           {/* Officer RCT Table */}
@@ -105,6 +115,7 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
             data={data.officerOverSlaRct.map(o => [o.name, o.count])}
             color="#FF7043"
             highlightCol={1}
+            headerBg="bg-red-600"
           />
         </div>
       </div>
@@ -189,12 +200,20 @@ const StatCard: React.FC<{ label: string; value: number | string; color: string 
   </div>
 );
 
-const SmallTable: React.FC<{ title: string; subtitle: string; headers: string[]; data: any[][]; color: string; highlightCol?: number }> = ({ title, subtitle, headers, data, color, highlightCol }) => (
+const SmallTable: React.FC<{ 
+  title: string; 
+  subtitle: string; 
+  headers: string[]; 
+  data: any[][]; 
+  color: string; 
+  highlightCol?: number;
+  headerBg?: string;
+}> = ({ title, subtitle, headers, data, color, highlightCol, headerBg }) => (
   <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
-    <div className="px-4 py-2 flex items-center gap-2 border-b border-gray-50 bg-gray-50/50">
-      <div className="w-1 h-3 rounded-full" style={{ backgroundColor: color }} />
-      <h4 className="text-[10px] font-black italic tracking-tighter text-brand-primary uppercase">
-        {title} <span style={{ color }}>{subtitle}</span>
+    <div className={`px-4 py-2 flex items-center gap-2 ${headerBg ? `${headerBg} text-white` : 'border-b border-gray-50 bg-gray-50/50'}`}>
+      <div className={`w-1 h-3 rounded-full ${headerBg ? 'bg-white/30' : ''}`} style={!headerBg ? { backgroundColor: color } : {}} />
+      <h4 className="text-[10px] font-black italic tracking-tighter uppercase">
+        {title} <span style={!headerBg ? { color } : {}} className={headerBg ? 'text-white/80' : ''}>{subtitle}</span>
       </h4>
     </div>
     <div className="overflow-x-auto">

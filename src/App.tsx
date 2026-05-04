@@ -151,7 +151,12 @@ export default function App() {
 
   useEffect(() => {
     const loadData = async (showLoading = false) => {
-      if (showLoading) setIsRefreshing(true);
+      // If we already have data and are just changing ULP, we don't need a full-page loader
+      // the new caching logic in GoogleSheetsService handles this instantly
+      const needsFullLoader = !data || (showLoading && !isRefreshing);
+      
+      if (needsFullLoader) setIsRefreshing(true);
+      
       try {
         const result = await GoogleSheetsService.fetchData(startDate, endDate, selectedUlp);
         const hasData = result.officerPerformance.length > 0 || result.summary.dataAktif > 0;
@@ -305,7 +310,7 @@ export default function App() {
 
       <footer className="bg-white border-t border-gray-100 p-4 text-center">
         <p className="text-[10px] font-black text-gray-300 tracking-[0.5em] uppercase">
-          © 2026 PT PLN (PERSERO) • UNIT INDUK WILAYAH SUMATERA BARAT • UP3 BUKITTINGGI
+          © 2026 PLN ELECTRICITY SERVICES • REGIONAL SUMATERA BARAT • UL BUKITTINGGI
         </p>
       </footer>
     </div>
