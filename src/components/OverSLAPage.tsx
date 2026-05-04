@@ -188,7 +188,7 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
 const StatCard: React.FC<{ label: string; value: number | string; color: string }> = ({ label, value, color }) => (
   <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm relative overflow-hidden group">
     <div className="absolute top-0 right-0 w-16 h-16 bg-gray-50/50 rounded-full -mr-8 -mt-8" />
-    <span className="text-[8px] font-black italic tracking-tighter text-gray-400 uppercase mb-0.5 block leading-none">
+    <span className="text-[16px] font-black italic tracking-tighter text-gray-400 uppercase mb-1 block leading-none">
       {label}
     </span>
     <div className="flex items-center gap-1.5">
