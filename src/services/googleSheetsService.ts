@@ -348,6 +348,12 @@ export class GoogleSheetsService {
       officerToUlp.set(this.cleanName(o.name), ulpName);
     });
 
+    // Determine official ULPs list beforehand for REGEX-style matching
+    const allUlps = Array.from(new Set(officers.map(o => {
+      let ulpName = (ulpMap.get(o.ulpId) || o.directUlp || "Unknown").toUpperCase().trim();
+      return ulpName;
+    }))).filter(u => u !== "UNKNOWN");
+
     // 2. Date ranges
     const sDate = startDate ? (() => { const [y, m, d] = startDate.split('-').map(Number); return new Date(y, m - 1, d); })() : null;
     const eDate = endDate ? (() => { const [y, m, d] = endDate.split('-').map(Number); const date = new Date(y, m - 1, d); date.setHours(23, 59, 59, 999); return date; })() : null;
@@ -417,13 +423,13 @@ export class GoogleSheetsService {
       const displayUlpName = ulpName.toUpperCase().trim();
       const isWithinUlp = !selectedUlp || displayUlpName === selectedUlp.toUpperCase().trim() || displayPoskoName === selectedUlp.toUpperCase().trim();
 
-      const reportId = String(row[woIdIdx] || "").trim().toUpperCase();
+      const reportId = String(row[woIdIdx] || row[13] || "").trim().toUpperCase(); // Prefer detect, fallback to N (13)
       if (!reportId) return;
 
       const cctvVal = row.length > woCctvIdx ? String(row[woCctvIdx] || "").trim().toUpperCase() : "";
       const isCctv = cctvVal.includes("CCTV");
 
-      // SLA Calculations
+      // ... existing SLA calculations ...
       const tglLapor = rowDate;
       const tglPengerjaan = woTglPengerjaanIdx !== -1 ? this.parseSheetDate(row[woTglPengerjaanIdx]) : null;
       const tglSelesai = woTglSelesaiIdx !== -1 ? this.parseSheetDate(row[woTglSelesaiIdx]) : null;
@@ -485,8 +491,13 @@ export class GoogleSheetsService {
       if (!officerWoReports.has(nameKey)) officerWoReports.set(nameKey, new Map());
       officerWoReports.get(nameKey)!.set(reportId, (officerWoReports.get(nameKey)!.get(reportId) || false) || isCctv);
       
-      if (!ulpWoReports.has(displayUlpName)) ulpWoReports.set(displayUlpName, new Map());
-      ulpWoReports.get(displayUlpName)!.set(reportId, (ulpWoReports.get(displayUlpName)!.get(reportId) || false) || isCctv);
+      // REGEXMATCH-style ULP aggregation: find matching official ULP
+      const rowUlpContext = (displayUlpName + " " + String(row[3] || "")).toUpperCase();
+      const matchedUlp = allUlps.find(u => rowUlpContext.includes(u.toUpperCase()));
+      const aggregatedUlpKey = matchedUlp || displayUlpName;
+
+      if (!ulpWoReports.has(aggregatedUlpKey)) ulpWoReports.set(aggregatedUlpKey, new Map());
+      ulpWoReports.get(aggregatedUlpKey)!.set(reportId, (ulpWoReports.get(aggregatedUlpKey)!.get(reportId) || false) || isCctv);
     });
 
     // Calculate WO Stats
@@ -560,8 +571,13 @@ export class GoogleSheetsService {
       const raw = officerPoRawStats.get(nameKey) || { total: 0, cctv: 0 };
       officerPoRawStats.set(nameKey, { total: raw.total + 1, cctv: raw.cctv + (isCctv ? 1 : 0) });
       
-      if (!ulpPoTasks.has(displayUlpName)) ulpPoTasks.set(displayUlpName, new Map());
-      ulpPoTasks.get(displayUlpName)!.set(taskId, (ulpPoTasks.get(displayUlpName)!.get(taskId) || false) || isCctv);
+      // REGEXMATCH-style ULP aggregation
+      const rowUlpContext = (displayUlpName + " " + String(row[poUlpIdx] || "")).toUpperCase();
+      const matchedUlp = allUlps.find(u => rowUlpContext.includes(u.toUpperCase()));
+      const aggregatedUlpKey = matchedUlp || displayUlpName;
+
+      if (!ulpPoTasks.has(aggregatedUlpKey)) ulpPoTasks.set(aggregatedUlpKey, new Map());
+      ulpPoTasks.get(aggregatedUlpKey)!.set(taskId, (ulpPoTasks.get(aggregatedUlpKey)!.get(taskId) || false) || isCctv);
     });
 
 
@@ -623,11 +639,7 @@ export class GoogleSheetsService {
     mappedCctvUsage.sort((a, b) => b.totalPoPakaiCctv - a.totalPoPakaiCctv);
 
     // 7. Aggregate ULP Performance using unique ID counts per ULP
-    const allUlps = Array.from(new Set(officers.map(o => {
-      let ulpName = (ulpMap.get(o.ulpId) || o.directUlp || "Unknown").toUpperCase().trim();
-      return ulpName;
-    })));
-
+    // allUlps already defined above
     const ulpPerformance = allUlps.map(ulp => {
       const woStats = ulpWoStatsMap.get(ulp) || { total: 0, cctv: 0 };
       const poStats = ulpPoStatsMap.get(ulp) || { total: 0, cctv: 0 };

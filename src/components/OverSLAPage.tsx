@@ -58,11 +58,11 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
               <table className="w-full">
                 <thead className="sticky top-0 bg-white z-10">
                   <tr className="border-b border-gray-50 bg-gray-50/50">
-                    <th className="px-4 py-3 text-left text-[9px] font-bold text-gray-400 uppercase tracking-widest">No Laporan</th>
-                    <th className="px-4 py-3 text-left text-[9px] font-bold text-gray-400 uppercase tracking-widest">Tgl Laporan</th>
-                    <th className="px-4 py-3 text-left text-[9px] font-bold text-gray-400 uppercase tracking-widest">Nama Petugas</th>
-                    <th className="px-4 py-3 text-right text-[9px] font-bold text-gray-400 uppercase tracking-widest">RPT</th>
-                    <th className="px-4 py-3 text-right text-[9px] font-bold text-gray-400 uppercase tracking-widest">RCT</th>
+                    <th className="px-4 py-3 text-left text-sm font-bold text-black uppercase tracking-widest">No Laporan</th>
+                    <th className="px-4 py-3 text-left text-sm font-bold text-black uppercase tracking-widest">Tgl Laporan</th>
+                    <th className="px-4 py-3 text-left text-sm font-bold text-black uppercase tracking-widest">Nama Petugas</th>
+                    <th className="px-4 py-3 text-left text-sm font-bold text-black uppercase tracking-widest">RPT</th>
+                    <th className="px-4 py-3 text-left text-sm font-bold text-black uppercase tracking-widest">RCT</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
