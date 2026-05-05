@@ -12,33 +12,105 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 12;
 
-  const totals = rating.officerRatings.reduce((acc, curr) => ({
-    totalWo: acc.totalWo + curr.totalWoPlnMobile,
-    r5: acc.r5 + curr.rating5,
-    r34: acc.r34 + curr.rating34,
-    r12: acc.r12 + curr.rating12,
-    noR: acc.noR + curr.noRating
-  }), { totalWo: 0, r5: 0, r34: 0, r12: 0, noR: 0 });
-
-  const totalPct = totals.totalWo > 0 
-    ? Math.round((totals.r5 / totals.totalWo) * 100)
+  const totalPct = rating.totalWoPlnMobile > 0 
+    ? Math.round((rating.rating5 / rating.totalWoPlnMobile) * 100)
     : 100;
 
+  const [modalData, setModalData] = useState<{ isOpen: boolean; title: string; data: any[][] }>({
+    isOpen: false,
+    title: "",
+    data: []
+  });
+
   const sidebarCards = [
-    { label: "% KOMULATIF", value: `${totalPct}%`, color: totalPct === 100 ? "bg-[#00B050]" : "bg-[#FF0000]", textColor: "text-white" },
-    { label: "TOTAL WO PLN MOBILE", value: totals.totalWo.toLocaleString(), color: "bg-[#0000FF]", textColor: "text-white" },
-    { label: "WO RATING 5", value: totals.r5.toLocaleString(), color: "bg-[#00B050]", textColor: "text-white" },
-    { label: "WO RATING 3-4", value: totals.r34.toLocaleString(), color: "bg-[#FFFF00]", textColor: "text-black" },
-    { label: "WO RATING 1-2", value: totals.r12.toLocaleString(), color: "bg-[#FF0000]", textColor: "text-white" },
-    { label: "WO TIDAK ADA RATING", value: totals.noR.toLocaleString(), color: "bg-[#212121]", textColor: "text-white" },
+    { label: "% KOMULATIF", value: `${totalPct}%`, color: totalPct === 100 ? "bg-[#00B050]" : "bg-[#FF0000]", textColor: "text-white", clickable: false },
+    { label: "TOTAL WO PLN MOBILE", value: rating.totalWoPlnMobile.toLocaleString(), color: "bg-[#0000FF]", textColor: "text-white", clickable: true, detail: rating.totalWoPlnMobileList },
+    { label: "WO RATING 5", value: rating.rating5.toLocaleString(), color: "bg-[#00B050]", textColor: "text-white", clickable: true, detail: rating.rating5List },
+    { label: "WO RATING 3-4", value: rating.rating34.toLocaleString(), color: "bg-[#FFFF00]", textColor: "text-black", clickable: true, detail: rating.rating34List },
+    { label: "WO RATING 1-2", value: rating.rating12.toLocaleString(), color: "bg-[#FF0000]", textColor: "text-white", clickable: true, detail: rating.rating12List },
+    { label: "WO TIDAK ADA RATING", value: rating.noRating.toLocaleString(), color: "bg-[#212121]", textColor: "text-white", clickable: true, detail: rating.noRatingList },
   ];
+
+  const handleCardClick = (card: typeof sidebarCards[0]) => {
+    if (!card.clickable || !card.detail) return;
+    setModalData({
+      isOpen: true,
+      title: card.label,
+      data: card.detail
+    });
+  };
 
   const totalPages = Math.ceil(rating.officerRatings.length / rowsPerPage);
   const startIndex = (currentPage - 1) * rowsPerPage;
   const paginatedData = rating.officerRatings.slice(startIndex, startIndex + rowsPerPage);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 relative">
+      {modalData.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col border border-white/20"
+          >
+            <div className="bg-brand-primary p-6 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <ShieldCheck className="text-brand-secondary" size={24} />
+                <h3 className="text-xl font-black italic tracking-tighter uppercase">DETAIL DATA: {modalData.title}</h3>
+              </div>
+              <button 
+                onClick={() => setModalData(prev => ({ ...prev, isOpen: false }))}
+                className="bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors"
+              >
+                <ChevronLeft size={24} className="rotate-90 md:rotate-0" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-auto p-6 bg-gray-50">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-[#1b3d5d] text-white">
+                    <tr className="text-[11px] font-black uppercase italic tracking-tighter">
+                      <th className="p-4 border-b border-white/10 whitespace-nowrap">NO LAPORAN</th>
+                      <th className="p-4 border-b border-white/10 whitespace-nowrap">TANGGAL</th>
+                      <th className="p-4 border-b border-white/10 whitespace-nowrap">NAMA PETUGAS</th>
+                      <th className="p-4 border-b border-white/10 whitespace-nowrap">ULP</th>
+                      <th className="p-4 border-b border-white/10 whitespace-nowrap">RATING</th>
+                      <th className="p-4 border-b border-white/10 whitespace-nowrap">SUMBER LAPOR</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-xs font-black italic uppercase text-brand-primary">
+                    {modalData.data.length > 0 ? (
+                      modalData.data.map((row, i) => (
+                        <tr key={i} className="hover:bg-gray-50 border-b border-gray-100 transition-colors">
+                          {row.map((cell, j) => (
+                            <td key={j} className="p-4 whitespace-nowrap">{cell}</td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="p-12 text-center text-gray-400">TIDAK ADA DATA DITEMUKAN</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-gray-100 bg-white text-right shrink-0">
+              <span className="text-[10px] font-black text-gray-400 uppercase mr-4">MENAMPILKAN {modalData.data.length} DATA</span>
+              <button 
+                onClick={() => setModalData(prev => ({ ...prev, isOpen: false }))}
+                className="bg-brand-primary text-white px-6 py-2 rounded-xl text-xs font-black uppercase italic tracking-widest hover:bg-brand-primary/90 transition-all active:scale-95 shadow-lg shadow-brand-primary/20"
+              >
+                TUTUP
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Sidebar - RINGKASAN DATA ULP */}
         <div className="lg:w-64 flex flex-col gap-4">
@@ -52,10 +124,16 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: idx * 0.05 }}
-                className={`${card.color} p-4 rounded-xl shadow-sm border border-black/10 flex flex-col items-center justify-center text-center`}
+                onClick={() => handleCardClick(card)}
+                className={`${card.color} p-4 rounded-xl shadow-sm border border-black/10 flex flex-col items-center justify-center text-center ${card.clickable ? 'cursor-pointer hover:scale-105 transition-transform active:scale-95' : ''}`}
               >
                 <p className={`text-[10px] font-black uppercase tracking-widest ${card.textColor} opacity-80 mb-2`}>{card.label}</p>
                 <h3 className={`text-2xl font-black italic ${card.textColor}`}>{card.value}</h3>
+                {card.clickable && (
+                  <div className={`mt-2 text-[8px] font-black uppercase tracking-widest ${card.textColor} opacity-40 border-t border-current/20 pt-1 w-full`}>
+                    KLIK UNTUK DETAIL
+                  </div>
+                )}
               </motion.div>
             ))}
           </div>

@@ -57,6 +57,16 @@ export interface RatingData {
     avgRating: number;
     totalFeedback: number;
   };
+  totalWoPlnMobile: number;
+  rating5: number;
+  rating34: number;
+  rating12: number;
+  noRating: number;
+  totalWoPlnMobileList: any[][];
+  rating5List: any[][];
+  rating34List: any[][];
+  rating12List: any[][];
+  noRatingList: any[][];
 }
 
 export interface OfficerRating {

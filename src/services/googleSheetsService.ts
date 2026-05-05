@@ -367,11 +367,11 @@ export class GoogleSheetsService {
     };
 
     // 3. Aggregate WO data
-    const woTargets = ["nama petugas", "cctv", "tanggal", "no laporan", "nama regu", "ulp", "tgl pengerjaan", "tgl selesai", "sumber laporan", "pelapor", "shift", "rpt", "rct", "durasi wo", "posko", "rating", "poskoid"];
+    const woTargets = ["nama petugas", "cctv", "tanggal", "no laporan", "nama regu", "ulp", "tgl pengerjaan", "tgl selesai", "sumber lapor", "pelapor", "shift", "rpt", "rct", "durasi wo", "posko", "rating", "poskoid"];
     const { headerRowIdx: woHeaderIdx, colIndices: woCols } = this.findHeaderAndCols(woRows, woTargets);
     const woNameIdx = woCols[0] !== -1 ? woCols[0] : 10;
     const woCctvIdx = woCols[1] !== -1 ? woCols[1] : 42;
-    const woDateIdx = woCols[2] !== -1 ? woCols[2] : 43; 
+    const woDateIdx = woCols[2] !== -1 ? woCols[2] : (woCols[6] !== -1 ? woCols[6] : 2); 
     const woIdIdx = woCols[3] !== -1 ? woCols[3] : 13;
     const woReguIdx = woCols[4] !== -1 ? woCols[4] : 9;
     const woUlpIdx = woCols[5];
@@ -419,46 +419,108 @@ export class GoogleSheetsService {
     const rptOver30Ids = new Set<string>();
     const rptOver45Ids = new Set<string>();
 
+    let totalRatingWo = 0;
+    let totalRating5 = 0;
+    let totalRating34 = 0;
+    let totalRating12 = 0;
+    let totalNoRating = 0;
+
+    const totalWoPlnMobileList: any[][] = [];
+    const rating5List: any[][] = [];
+    const rating34List: any[][] = [];
+    const rating12List: any[][] = [];
+    const noRatingList: any[][] = [];
+
+    const standardizeUlpName = (name: string) => {
+      return name.toUpperCase()
+        .replace(/^POSKO ULP\s+/i, "")
+        .replace(/^ULP\s+/i, "")
+        .replace(/^POSKO\s+/i, "")
+        .trim();
+    };
+
     woRows.slice(woDataStart).forEach((row) => {
-      if (row.length <= woDateIdx) return;
-      const rowDate = this.parseSheetDate(String(row[woDateIdx] || "").trim());
+      if (!row || row.length < 3) return;
+      
+      const rowDateRaw = woDateIdx !== -1 && woDateIdx < row.length ? String(row[woDateIdx] || "").trim() : "";
+      const rowDate = this.parseSheetDate(rowDateRaw);
       if (!isWithinRange(rowDate)) return;
 
-      const nameRaw = String(row[woNameIdx] || "").trim();
+      const nameRaw = woNameIdx !== -1 && woNameIdx < row.length ? String(row[woNameIdx] || "").trim() : "";
       const nameKey = this.cleanName(nameRaw);
-      if (!nameKey || nameKey === "NAMAPETUGAS" || nameKey === "NAME") return;
       
-      const woPoskoValue = woPoskoIdx !== -1 ? String(row[woPoskoIdx] || "").trim() : "";
+      const woPoskoValue = woPoskoIdx !== -1 && woPoskoIdx < row.length ? String(row[woPoskoIdx] || "").trim() : "";
       const normalizedPosko = this.normalizeForMatch(woPoskoValue);
       const poskoidFromMapping = poskoToUlpIdMap.get(normalizedPosko);
       
-      const poskoidRaw = woPoskoidIdx !== -1 ? String(row[woPoskoidIdx] || "").trim() : "";
+      const poskoidRaw = woPoskoidIdx !== -1 && woPoskoidIdx < row.length ? String(row[woPoskoidIdx] || "").trim() : "";
       const finalPoskoid = poskoidFromMapping || poskoidRaw;
       
       let ulpNameLookup = finalPoskoid ? ulpMap.get(finalPoskoid) : "";
       if (ulpNameLookup) {
-        ulpNameLookup = ulpNameLookup.toUpperCase().replace(/^POSKO ULP\s+/i, "").trim();
+        ulpNameLookup = standardizeUlpName(ulpNameLookup);
       }
       
-      let ulpNameFromWo = (woUlpIdx !== -1 && row[woUlpIdx]) 
-        ? String(row[woUlpIdx]).toUpperCase().replace(/^POSKO ULP\s+/i, "").trim() 
+      let ulpNameFromWo = (woUlpIdx !== -1 && woUlpIdx < row.length && row[woUlpIdx]) 
+        ? standardizeUlpName(String(row[woUlpIdx]))
         : "";
 
-      let ulpName = officerToUlp.get(nameKey) || ulpNameLookup || ulpNameFromWo || "Unknown";
+      let ulpName = (nameKey ? officerToUlp.get(nameKey) : "") || ulpNameLookup || ulpNameFromWo || "Unknown";
       let poskoName = woPoskoValue || ulpName;
 
       const displayPoskoName = poskoName.toUpperCase().trim();
+      const standardizedDisplayPosko = standardizeUlpName(displayPoskoName);
       if (displayPoskoName) allPoskosSet.add(displayPoskoName);
       
       const displayUlpName = ulpName.toUpperCase().trim();
-      const isWithinUlp = !selectedUlp || displayUlpName === selectedUlp.toUpperCase().trim() || displayPoskoName === selectedUlp.toUpperCase().trim();
+      const standardizedDisplayUlp = standardizeUlpName(displayUlpName);
+
+      const targetUlp = selectedUlp && selectedUlp !== "ALL" ? standardizeUlpName(selectedUlp) : null;
+      const isWithinUlp = !targetUlp || standardizedDisplayUlp === targetUlp || standardizedDisplayPosko === targetUlp;
+
+      // SUMMARY STATS: Process regardless of whether the officer name is known
+      if (isWithinUlp) {
+        const sourceRaw = woSourceIdx !== -1 && woSourceIdx < row.length ? String(row[woSourceIdx] || "").trim().toUpperCase() : "";
+        const isPlnMobile = sourceRaw === "PLN MOBILE";
+        const ratingStr = woRatingIdx !== -1 && woRatingIdx < row.length ? String(row[woRatingIdx] || "").trim() : "";
+        const ratingVal = ratingStr === "" || isNaN(parseInt(ratingStr)) ? null : parseInt(ratingStr);
+
+        if (isPlnMobile) {
+          totalRatingWo++;
+          const rowDetail = [
+            woIdIdx !== -1 && woIdIdx < row.length ? String(row[woIdIdx] || "") : "-",
+            rowDateRaw || "-",
+            nameRaw || "-",
+            ulpName || "-",
+            ratingStr || "-",
+            sourceRaw || "-"
+          ];
+          totalWoPlnMobileList.push(rowDetail);
+          
+          if (ratingVal === null || ratingStr === "") {
+            totalNoRating++;
+            noRatingList.push(rowDetail);
+          } else if (ratingVal === 5) {
+            totalRating5++;
+            rating5List.push(rowDetail);
+          } else if (ratingVal === 4 || ratingVal === 3) {
+            totalRating34++;
+            rating34List.push(rowDetail);
+          } else if (ratingVal === 2 || ratingVal === 1) {
+            totalRating12++;
+            rating12List.push(rowDetail);
+          }
+        }
+      }
+
+      // PER-OFFICER STATS: Require a valid name
+      if (!nameKey || nameKey === "NAMAPETUGAS" || nameKey === "NAME") return;
 
       if (isWithinUlp) {
-        const reguValue = String(row[woReguIdx] || "").trim();
-        // Rating counts for this row - AGGREGATION LOGIC (Filtered by ULP)
-        const source = woSourceIdx !== -1 ? String(row[woSourceIdx] || "").toUpperCase() : "";
-        const isPlnMobile = source.includes("PLN MOBILE");
-        const ratingStr = woRatingIdx !== -1 ? String(row[woRatingIdx] || "").trim() : "";
+        const reguValue = woReguIdx !== -1 && woReguIdx < row.length ? String(row[woReguIdx] || "").trim() : "";
+        const sourceRaw = woSourceIdx !== -1 && woSourceIdx < row.length ? String(row[woSourceIdx] || "").trim().toUpperCase() : "";
+        const isPlnMobile = sourceRaw === "PLN MOBILE";
+        const ratingStr = woRatingIdx !== -1 && woRatingIdx < row.length ? String(row[woRatingIdx] || "").trim() : "";
         const ratingVal = ratingStr === "" || isNaN(parseInt(ratingStr)) ? null : parseInt(ratingStr);
 
         const rStats = officerRatingStats.get(nameKey) || { 
@@ -467,16 +529,18 @@ export class GoogleSheetsService {
           ulp: ulpName,
           displayName: nameRaw
         };
-        if (isPlnMobile) rStats.totalWo++;
-        
-        if (ratingVal === null) {
-          rStats.noR++;
-        } else if (ratingVal === 5) {
-          rStats.r5++;
-        } else if (ratingVal === 4 || ratingVal === 3) {
-          rStats.r34++;
-        } else if (ratingVal === 2 || ratingVal === 1) {
-          rStats.r12++;
+        if (isPlnMobile) {
+          rStats.totalWo++;
+          
+          if (ratingVal === null || ratingStr === "") {
+            rStats.noR++;
+          } else if (ratingVal === 5) {
+            rStats.r5++;
+          } else if (ratingVal === 4 || ratingVal === 3) {
+            rStats.r34++;
+          } else if (ratingVal === 2 || ratingVal === 1) {
+            rStats.r12++;
+          }
         }
         if (reguValue && (rStats.regu === "" || rStats.regu === "Unknown")) rStats.regu = reguValue;
         if (ulpName && (rStats.ulp === "" || rStats.ulp === "Unknown")) rStats.ulp = ulpName;
@@ -832,7 +896,17 @@ export class GoogleSheetsService {
           summary: {
             avgRating: totalFeedbackCount > 0 ? weightedRatingSum / totalFeedbackCount : 5.0,
             totalFeedback: totalFeedbackCount
-          }
+          },
+          totalWoPlnMobile: totalRatingWo,
+          rating5: totalRating5,
+          rating34: totalRating34,
+          rating12: totalRating12,
+          noRating: totalNoRating,
+          totalWoPlnMobileList,
+          rating5List,
+          rating34List,
+          rating12List,
+          noRatingList
         };
       })(),
       cctvUsage: mappedCctvUsage,
