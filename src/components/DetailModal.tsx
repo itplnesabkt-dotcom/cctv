@@ -223,7 +223,7 @@ export function DetailModal({ isOpen, onClose, title, headers, rows }: DetailMod
               TOTAL: {rows.length} BARIS DATA
             </p>
             <p className="text-[10px] font-black text-gray-300 tracking-[0.3em] uppercase">
-              PT PLN (PERSERO) • UP3 BUKITTINGGI
+              PLN ELECTRICITY SERVICES • UL BUKITTINGGI
             </p>
           </div>
         </motion.div>

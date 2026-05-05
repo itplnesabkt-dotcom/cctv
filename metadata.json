@@ -1,6 +1,6 @@
 {
-  "name": "MONITORING YANDAL PLN ES BukittinggI",
-  "description": "Monitoring Prabayar Dashboard for PLN ES Bukittinggi with Google Sheets integration.",
+  "name": "MONITORING YANDAL PLN ES Bukittinggi",
+  "description": "Monitoring Yandal Dashboard for PLN ES Bukittinggi with Google Sheets integration.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
