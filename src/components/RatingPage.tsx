@@ -115,7 +115,7 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
         {/* Sidebar - RINGKASAN DATA ULP */}
         <div className="lg:w-64 flex flex-col gap-4">
           <div className="bg-brand-primary p-4 rounded-t-xl text-white">
-            <h3 className="text-xs font-black italic uppercase tracking-tighter text-center">RINGKASAN DATA ULP</h3>
+            <h3 className="text-xs font-black italic uppercase tracking-tighter text-center">RINGKASAN DATA UP3</h3>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-1 gap-4">
             {sidebarCards.map((card, idx) => (
