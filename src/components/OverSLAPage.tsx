@@ -19,7 +19,7 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
         <div className="lg:col-span-2 h-full">
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm h-full flex flex-col">
             <div className="px-4 py-2 bg-orange-500 text-white flex items-center gap-2 shrink-0">
-              <h4 className="text-[10px] font-black italic tracking-tighter uppercase">RINGKASAN DATA</h4>
+              <h4 className="text-sm font-black italic tracking-tighter uppercase">RINGKASAN DATA</h4>
             </div>
             <div className="p-3 flex flex-col gap-3 flex-1 bg-gray-50/30">
               <StatCard label="TOTAL JUMLAH GANGGUAN" value={data.totalGangguan} color="#4CAF50" />
@@ -118,7 +118,7 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
           <div className="flex-1 min-h-[300px]">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-1.5 h-6 bg-brand-secondary rounded-full" />
-              <h3 className="text-base font-black italic tracking-tighter text-brand-primary uppercase">
+              <h3 className="text-sm font-black italic tracking-tighter text-brand-primary uppercase">
                 JUMLAH WO <span className="text-brand-secondary">MENURUT ULP</span>
               </h3>
             </div>
@@ -140,7 +140,7 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
           <div className="w-full md:w-1/3 min-h-[300px] border-l border-gray-50 pl-0 md:pl-8">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-1.5 h-6 bg-[#FFD700] rounded-full" />
-              <h3 className="text-base font-black italic tracking-tighter text-brand-primary uppercase">
+              <h3 className="text-sm font-black italic tracking-tighter text-brand-primary uppercase">
                 SEBARAN <span className="text-[#FFD700]">PER SHIFT</span>
               </h3>
             </div>
@@ -203,7 +203,7 @@ const SmallTable: React.FC<{
   <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
     <div className={`px-4 py-2 flex items-center gap-2 ${headerBg ? `${headerBg} text-white` : 'border-b border-gray-50 bg-gray-50/50'}`}>
       <div className={`w-1 h-3 rounded-full ${headerBg ? 'bg-white/30' : ''}`} style={!headerBg ? { backgroundColor: color } : {}} />
-      <h4 className="text-[10px] font-black italic tracking-tighter uppercase">
+      <h4 className="text-sm font-black italic tracking-tighter uppercase">
         {title} <span style={!headerBg ? { color } : {}} className={headerBg ? 'text-white/80' : ''}>{subtitle}</span>
       </h4>
     </div>
@@ -211,18 +211,18 @@ const SmallTable: React.FC<{
       <table className="w-full">
         <thead>
           <tr className="border-b border-gray-50">
-            <th className="px-3 py-1.5 text-left text-[8px] font-bold text-gray-400 uppercase">#</th>
+            <th className="px-3 py-1.5 text-left text-sm font-bold text-gray-400 uppercase">#</th>
             {headers.map((h, i) => (
-              <th key={i} className={`px-3 py-1.5 text-left text-[8px] font-bold text-gray-400 uppercase ${i === headers.length - 1 ? 'text-right' : ''}`}>{h}</th>
+              <th key={i} className={`px-3 py-1.5 text-left text-sm font-bold text-gray-400 uppercase ${i === headers.length - 1 ? 'text-right' : ''}`}>{h}</th>
             ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-50">
           {data.map((row, idx) => (
             <tr key={idx} className="hover:bg-gray-50 transition-colors">
-              <td className="px-3 py-1.5 text-[8px] text-gray-400 font-mono">{idx + 1}</td>
+              <td className="px-3 py-1.5 text-[12px] text-gray-400 font-mono">{idx + 1}</td>
               {row.map((cell, i) => (
-                <td key={i} className={`px-3 py-1.5 text-[9px] font-bold ${i === row.length - 1 ? 'text-right' : 'text-gray-700 truncate max-w-[100px]'} ${i === highlightCol ? 'text-brand-secondary bg-brand-secondary/5' : ''}`}>
+                <td key={i} className={`px-3 py-1.5 text-[12px] font-bold ${i === row.length - 1 ? 'text-right' : 'text-gray-700 truncate max-w-[150px]'} ${i === highlightCol ? 'text-brand-secondary bg-brand-secondary/5' : ''}`}>
                   {cell}
                 </td>
               ))}
