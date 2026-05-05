@@ -78,6 +78,7 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
               <thead className="sticky top-0 z-10 shadow-sm">
                 <tr className="text-white text-[11px] font-black uppercase tracking-tighter">
                   <th rowSpan={2} className="bg-[#1b3d5d] py-3 px-2 border-r border-gray-200 min-w-[200px]">NAMA PETUGAS</th>
+                  <th rowSpan={2} className="bg-[#4472C4] py-3 px-2 border-r border-gray-200 min-w-[120px]">ULP</th>
                   <th rowSpan={2} className="bg-[#d38c1a] py-3 px-2 border-r border-gray-200 min-w-[150px]">NAMA REGU</th>
                   <th colSpan={6} className="bg-[#000080] py-2 border-b border-gray-200">KOMULATIF RATING</th>
                 </tr>
@@ -96,6 +97,7 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                     <tr key={idx} className="border-b border-gray-800 text-sm font-black italic text-brand-primary h-[40px]">
                       <td className="p-3 text-left border-r border-gray-800 uppercase tracking-tight">{item.name}</td>
                       <td className="p-3 text-left border-r border-gray-800 uppercase tracking-tight">{item.ulp}</td>
+                      <td className="p-3 text-left border-r border-gray-800 uppercase tracking-tight">{item.regu}</td>
                       <td className="p-3 border-r border-gray-800">{item.totalWoPlnMobile}</td>
                       <td className="p-3 border-r border-gray-800">{item.rating5}</td>
                       <td className="p-3 border-r border-gray-800">{item.rating34}</td>
@@ -108,7 +110,7 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={8} className="p-12 text-center text-gray-400 font-bold italic uppercase tracking-widest text-xs">
+                    <td colSpan={9} className="p-12 text-center text-gray-400 font-bold italic uppercase tracking-widest text-xs">
                       TIDAK ADA DATA RATING DITEMUKAN
                     </td>
                   </tr>
@@ -175,10 +177,10 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
               </button>
             </div>
           </div>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-);
+  );
 };
 

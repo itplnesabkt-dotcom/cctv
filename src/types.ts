@@ -62,6 +62,7 @@ export interface RatingData {
 export interface OfficerRating {
   name: string;
   ulp: string;
+  regu: string;
   totalWoPlnMobile: number;
   rating5: number;
   rating34: number;

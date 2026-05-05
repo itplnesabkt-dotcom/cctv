@@ -13,6 +13,7 @@ export class GoogleSheetsService {
       poRows: any[][],
       petugasRows: any[][],
       ulpRows: any[][],
+      poskoRows: any[][],
       ratingRows: any[][]
     },
     startDate?: string,
@@ -255,7 +256,7 @@ export class GoogleSheetsService {
 
   static async fetchData(startDate?: string, endDate?: string, selectedUlp?: string): Promise<DashboardData> {
     const now = Date.now();
-    let woRows: any[][], poRows: any[][], petugasRows: any[][], ulpRows: any[][], ratingRows: any[][];
+    let woRows: any[][], poRows: any[][], petugasRows: any[][], ulpRows: any[][], poskoRows: any[][], ratingRows: any[][];
 
     // 1. DATA ACQUISITION (Cached or Fresh)
     const canUseRawCache = this.rawDataCache && 
@@ -264,19 +265,26 @@ export class GoogleSheetsService {
                            (now - this.rawDataCache.timestamp < 30000);
 
     if (canUseRawCache) {
-      ({ woRows, poRows, petugasRows, ulpRows, ratingRows } = this.rawDataCache.data);
+      const cached = this.rawDataCache!.data;
+      woRows = cached.woRows;
+      poRows = cached.poRows;
+      petugasRows = cached.petugasRows;
+      ulpRows = cached.ulpRows;
+      poskoRows = cached.poskoRows;
+      ratingRows = cached.ratingRows;
     } else {
-      [woRows, poRows, petugasRows, ulpRows, ratingRows] = await Promise.all([
+      [woRows, poRows, petugasRows, ulpRows, poskoRows, ratingRows] = await Promise.all([
         this.fetchSheetDataRaw("WO"),
         this.fetchSheetDataRaw("PO"),
         this.petugasCache ? Promise.resolve(this.petugasCache) : this.fetchSheetDataRaw("PETUGAS").then(data => { this.petugasCache = data; return data; }),
         this.ulpCache ? Promise.resolve(this.ulpCache) : this.fetchSheetDataRaw("ULP").then(data => { this.ulpCache = data; return data; }),
+        this.fetchSheetDataRaw("POSKO"),
         this.fetchSheetDataRaw("RATING"),
       ]);
 
       if (woRows.length > 0 || poRows.length > 0) {
         this.rawDataCache = {
-          data: { woRows, poRows, petugasRows, ulpRows, ratingRows },
+          data: { woRows, poRows, petugasRows, ulpRows, poskoRows, ratingRows },
           startDate,
           endDate,
           timestamp: now
@@ -287,7 +295,7 @@ export class GoogleSheetsService {
     }
 
 
-    // 1. Get ULP and Petugas data for mapping
+    // 1. Get ULP, POSKO and Petugas data for mapping
     const ulpMap = new Map<string, string>();
     const { headerRowIdx: ulpHeaderIdx, colIndices: ulpCols } = this.findHeaderAndCols(ulpRows, ["id", "name"]);
     if (ulpCols[0] !== -1 && ulpCols[1] !== -1) {
@@ -295,6 +303,16 @@ export class GoogleSheetsService {
         const id = String(row[ulpCols[0]] || "").trim();
         const name = String(row[ulpCols[1]] || "").trim();
         if (id && name) ulpMap.set(id, name);
+      });
+    }
+
+    const poskoToUlpIdMap = new Map<string, string>();
+    const { headerRowIdx: poskoHeaderIdx, colIndices: poskoCols } = this.findHeaderAndCols(poskoRows, ["posko", "poskoid", "ulp_id"]);
+    if (poskoCols[0] !== -1) {
+      poskoRows.slice(poskoHeaderIdx + 1).forEach(row => {
+        const poskoName = this.normalizeForMatch(String(row[poskoCols[0]] || ""));
+        const ulpId = String(row[poskoCols[1]] !== undefined ? row[poskoCols[1]] : (row[poskoCols[2]] || "")).trim();
+        if (poskoName && ulpId) poskoToUlpIdMap.set(poskoName, ulpId);
       });
     }
 
@@ -314,6 +332,7 @@ export class GoogleSheetsService {
     const officerToUlp = new Map<string, string>();
     officers.forEach(o => {
       let ulpName = (ulpMap.get(o.ulpId) || o.directUlp || "Unknown").toUpperCase().trim();
+      ulpName = ulpName.replace(/^POSKO ULP\s+/i, "").trim();
       officerToUlp.set(this.cleanName(o.name), ulpName);
     });
 
@@ -348,7 +367,7 @@ export class GoogleSheetsService {
     };
 
     // 3. Aggregate WO data
-    const woTargets = ["nama petugas", "cctv", "tanggal", "no laporan", "nama regu", "ulp", "tgl pengerjaan", "tgl selesai", "sumber laporan", "pelapor", "shift", "rpt", "rct", "durasi wo", "posko", "rating"];
+    const woTargets = ["nama petugas", "cctv", "tanggal", "no laporan", "nama regu", "ulp", "tgl pengerjaan", "tgl selesai", "sumber laporan", "pelapor", "shift", "rpt", "rct", "durasi wo", "posko", "rating", "poskoid"];
     const { headerRowIdx: woHeaderIdx, colIndices: woCols } = this.findHeaderAndCols(woRows, woTargets);
     const woNameIdx = woCols[0] !== -1 ? woCols[0] : 10;
     const woCctvIdx = woCols[1] !== -1 ? woCols[1] : 42;
@@ -366,6 +385,7 @@ export class GoogleSheetsService {
     const woDurasiWoIdx = woCols[13];
     const woPoskoIdx = woCols[14];
     const woRatingIdx = woCols[15];
+    const woPoskoidIdx = woCols[16];
 
     const woDataStart = woHeaderIdx !== -1 ? woHeaderIdx + 1 : 0;
     
@@ -382,6 +402,7 @@ export class GoogleSheetsService {
       r12: number; 
       noR: number;
       regu: string;
+      ulp: string;
       displayName: string;
     }>();
 
@@ -407,8 +428,24 @@ export class GoogleSheetsService {
       const nameKey = this.cleanName(nameRaw);
       if (!nameKey || nameKey === "NAMAPETUGAS" || nameKey === "NAME") return;
       
-      let ulpName = (woUlpIdx !== -1 && row[woUlpIdx]) ? String(row[woUlpIdx]).trim() : (officerToUlp.get(nameKey) || "Unknown");
-      let poskoName = (woPoskoIdx !== -1 && row[woPoskoIdx]) ? String(row[woPoskoIdx]).trim() : ulpName;
+      const woPoskoValue = woPoskoIdx !== -1 ? String(row[woPoskoIdx] || "").trim() : "";
+      const normalizedPosko = this.normalizeForMatch(woPoskoValue);
+      const poskoidFromMapping = poskoToUlpIdMap.get(normalizedPosko);
+      
+      const poskoidRaw = woPoskoidIdx !== -1 ? String(row[woPoskoidIdx] || "").trim() : "";
+      const finalPoskoid = poskoidFromMapping || poskoidRaw;
+      
+      let ulpNameLookup = finalPoskoid ? ulpMap.get(finalPoskoid) : "";
+      if (ulpNameLookup) {
+        ulpNameLookup = ulpNameLookup.toUpperCase().replace(/^POSKO ULP\s+/i, "").trim();
+      }
+      
+      let ulpNameFromWo = (woUlpIdx !== -1 && row[woUlpIdx]) 
+        ? String(row[woUlpIdx]).toUpperCase().replace(/^POSKO ULP\s+/i, "").trim() 
+        : "";
+
+      let ulpName = officerToUlp.get(nameKey) || ulpNameLookup || ulpNameFromWo || "Unknown";
+      let poskoName = woPoskoValue || ulpName;
 
       const displayPoskoName = poskoName.toUpperCase().trim();
       if (displayPoskoName) allPoskosSet.add(displayPoskoName);
@@ -427,6 +464,7 @@ export class GoogleSheetsService {
         const rStats = officerRatingStats.get(nameKey) || { 
           totalWo: 0, r5: 0, r34: 0, r12: 0, noR: 0, 
           regu: reguValue,
+          ulp: ulpName,
           displayName: nameRaw
         };
         if (isPlnMobile) rStats.totalWo++;
@@ -441,6 +479,7 @@ export class GoogleSheetsService {
           rStats.r12++;
         }
         if (reguValue && (rStats.regu === "" || rStats.regu === "Unknown")) rStats.regu = reguValue;
+        if (ulpName && (rStats.ulp === "" || rStats.ulp === "Unknown")) rStats.ulp = ulpName;
         officerRatingStats.set(nameKey, rStats);
       }
 
@@ -577,8 +616,21 @@ export class GoogleSheetsService {
       const nameKey = this.cleanName(row[poNameIdx]);
       if (!nameKey || nameKey === "NAMAPETUGAS" || nameKey === "NAME") return;
       
-      let ulpName = (poUlpIdx !== -1 && row[poUlpIdx]) ? String(row[poUlpIdx]).trim() : (officerToUlp.get(nameKey) || "Unknown");
-      let poskoName = (poPoskoIdx !== -1 && row[poPoskoIdx]) ? String(row[poPoskoIdx]).trim() : ulpName;
+      const poPoskoValue = poPoskoIdx !== -1 ? String(row[poPoskoIdx] || "").trim() : "";
+      const normalizedPoPosko = this.normalizeForMatch(poPoskoValue);
+      const poskoidFromPoMapping = poskoToUlpIdMap.get(normalizedPoPosko);
+      
+      let ulpNameLookup = poskoidFromPoMapping ? ulpMap.get(poskoidFromPoMapping) : "";
+      if (ulpNameLookup) {
+        ulpNameLookup = ulpNameLookup.toUpperCase().replace(/^POSKO ULP\s+/i, "").trim();
+      }
+      
+      let ulpNameFromPo = (poUlpIdx !== -1 && row[poUlpIdx]) 
+        ? String(row[poUlpIdx]).toUpperCase().replace(/^POSKO ULP\s+/i, "").trim() 
+        : "";
+
+      let ulpName = officerToUlp.get(nameKey) || ulpNameLookup || ulpNameFromPo || "Unknown";
+      let poskoName = poPoskoValue || ulpName;
 
       const reguValue = String(row[poReguIdx] || "").trim();
       
@@ -761,7 +813,8 @@ export class GoogleSheetsService {
 
           officerRatings.push({
             name: stats.displayName,
-            ulp: stats.regu,
+            ulp: stats.ulp,
+            regu: stats.regu,
             totalWoPlnMobile: stats.totalWo,
             rating5: stats.r5,
             rating34: stats.r34,
