@@ -1,5 +1,6 @@
 {
-  "name": "MONITORING CCTV PLN ES BukittinggI",
+  "name": "MONITORING YANDAL PLN ES BukittinggI",
   "description": "Monitoring Prabayar Dashboard for PLN ES Bukittinggi with Google Sheets integration.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": []
 }
