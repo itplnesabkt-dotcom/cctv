@@ -1,4 +1,4 @@
-import { DashboardData, OfficerPerformance, CCTVUsage } from "../types.ts";
+import { DashboardData, OfficerPerformance, CCTVUsage, OfficerRating } from "../types.ts";
 import Papa from "papaparse";
 
 export class GoogleSheetsService {
@@ -12,7 +12,8 @@ export class GoogleSheetsService {
       woRows: any[][],
       poRows: any[][],
       petugasRows: any[][],
-      ulpRows: any[][]
+      ulpRows: any[][],
+      ratingRows: any[][]
     },
     startDate?: string,
     endDate?: string,
@@ -209,6 +210,10 @@ export class GoogleSheetsService {
           idx = row.findIndex(h => (h.includes("no") && (h.includes("lap") || h.includes("tug"))) || h === "id" || h.includes("laporan id") || h.includes("id laporan") || h.includes("task id") || h.includes("id tugas"));
         } else if (t === "nama regu") {
           idx = row.findIndex(h => h.includes("regu") || h.includes("team"));
+        } else if (t === "rating") {
+          idx = row.findIndex(h => h === "rating" || h.includes("bintang") || h.includes("skor") || h.startsWith("star"));
+        } else if (t === "sumber laporan") {
+          idx = row.findIndex(h => h.includes("sumber") && (h.includes("lapor") || h.includes("src")));
         } else if (t === "rpt") {
           idx = row.findIndex(h => h === "rpt" || h.toLowerCase().includes("rpt"));
         } else if (t === "rct") {
@@ -250,7 +255,7 @@ export class GoogleSheetsService {
 
   static async fetchData(startDate?: string, endDate?: string, selectedUlp?: string): Promise<DashboardData> {
     const now = Date.now();
-    let woRows: any[][], poRows: any[][], petugasRows: any[][], ulpRows: any[][];
+    let woRows: any[][], poRows: any[][], petugasRows: any[][], ulpRows: any[][], ratingRows: any[][];
 
     // 1. DATA ACQUISITION (Cached or Fresh)
     const canUseRawCache = this.rawDataCache && 
@@ -259,18 +264,19 @@ export class GoogleSheetsService {
                            (now - this.rawDataCache.timestamp < 30000);
 
     if (canUseRawCache) {
-      ({ woRows, poRows, petugasRows, ulpRows } = this.rawDataCache.data);
+      ({ woRows, poRows, petugasRows, ulpRows, ratingRows } = this.rawDataCache.data);
     } else {
-      [woRows, poRows, petugasRows, ulpRows] = await Promise.all([
+      [woRows, poRows, petugasRows, ulpRows, ratingRows] = await Promise.all([
         this.fetchSheetDataRaw("WO"),
         this.fetchSheetDataRaw("PO"),
         this.petugasCache ? Promise.resolve(this.petugasCache) : this.fetchSheetDataRaw("PETUGAS").then(data => { this.petugasCache = data; return data; }),
         this.ulpCache ? Promise.resolve(this.ulpCache) : this.fetchSheetDataRaw("ULP").then(data => { this.ulpCache = data; return data; }),
+        this.fetchSheetDataRaw("RATING"),
       ]);
 
       if (woRows.length > 0 || poRows.length > 0) {
         this.rawDataCache = {
-          data: { woRows, poRows, petugasRows, ulpRows },
+          data: { woRows, poRows, petugasRows, ulpRows, ratingRows },
           startDate,
           endDate,
           timestamp: now
@@ -342,7 +348,7 @@ export class GoogleSheetsService {
     };
 
     // 3. Aggregate WO data
-    const woTargets = ["nama petugas", "cctv", "tanggal", "no laporan", "nama regu", "ulp", "tgl pengerjaan", "tgl selesai", "sumber laporan", "pelapor", "shift", "rpt", "rct", "durasi wo", "posko"];
+    const woTargets = ["nama petugas", "cctv", "tanggal", "no laporan", "nama regu", "ulp", "tgl pengerjaan", "tgl selesai", "sumber laporan", "pelapor", "shift", "rpt", "rct", "durasi wo", "posko", "rating"];
     const { headerRowIdx: woHeaderIdx, colIndices: woCols } = this.findHeaderAndCols(woRows, woTargets);
     const woNameIdx = woCols[0] !== -1 ? woCols[0] : 10;
     const woCctvIdx = woCols[1] !== -1 ? woCols[1] : 42;
@@ -350,15 +356,16 @@ export class GoogleSheetsService {
     const woIdIdx = woCols[3] !== -1 ? woCols[3] : 13;
     const woReguIdx = woCols[4] !== -1 ? woCols[4] : 9;
     const woUlpIdx = woCols[5];
-    const woTglPengerjaanIdx = woCols[6] !== -1 ? woCols[6] : -1;
-    const woTglSelesaiIdx = woCols[7] !== -1 ? woCols[7] : -1;
-    const woSourceIdx = woCols[8] !== -1 ? woCols[8] : -1;
-    const woReporterIdx = woCols[9] !== -1 ? woCols[9] : -1;
-    const woShiftIdx = woCols[10] !== -1 ? woCols[10] : -1;
+    const woTglPengerjaanIdx = woCols[6];
+    const woTglSelesaiIdx = woCols[7];
+    const woSourceIdx = woCols[8];
+    const woReporterIdx = woCols[9];
+    const woShiftIdx = woCols[10];
     const woRptIdx = woCols[11];
     const woRctIdx = woCols[12];
     const woDurasiWoIdx = woCols[13];
     const woPoskoIdx = woCols[14];
+    const woRatingIdx = woCols[15];
 
     const woDataStart = woHeaderIdx !== -1 ? woHeaderIdx + 1 : 0;
     
@@ -366,6 +373,18 @@ export class GoogleSheetsService {
     const officerWoReports = new Map<string, Map<string, boolean>>();
     const ulpWoReports = new Map<string, Map<string, boolean>>();
     const officerWoRawStats = new Map<string, { total: number; cctv: number }>();
+    
+    // Rating aggregation maps
+    const officerRatingStats = new Map<string, { 
+      totalWo: number; 
+      r5: number; 
+      r34: number; 
+      r12: number; 
+      noR: number;
+      regu: string;
+      displayName: string;
+    }>();
+
     const filteredWoRows: any[][] = [];
     const allPoskosSet = new Set<string>();
 
@@ -390,15 +409,40 @@ export class GoogleSheetsService {
       
       let ulpName = (woUlpIdx !== -1 && row[woUlpIdx]) ? String(row[woUlpIdx]).trim() : (officerToUlp.get(nameKey) || "Unknown");
       let poskoName = (woPoskoIdx !== -1 && row[woPoskoIdx]) ? String(row[woPoskoIdx]).trim() : ulpName;
-      
+
       const displayPoskoName = poskoName.toUpperCase().trim();
       if (displayPoskoName) allPoskosSet.add(displayPoskoName);
-
-      const reguValue = String(row[woReguIdx] || "").trim();
-      if (!this.isValidRegu(ulpName, reguValue)) return;
       
       const displayUlpName = ulpName.toUpperCase().trim();
       const isWithinUlp = !selectedUlp || displayUlpName === selectedUlp.toUpperCase().trim() || displayPoskoName === selectedUlp.toUpperCase().trim();
+
+      if (isWithinUlp) {
+        const reguValue = String(row[woReguIdx] || "").trim();
+        // Rating counts for this row - AGGREGATION LOGIC (Filtered by ULP)
+        const source = woSourceIdx !== -1 ? String(row[woSourceIdx] || "").toUpperCase() : "";
+        const isPlnMobile = source.includes("PLN MOBILE");
+        const ratingStr = woRatingIdx !== -1 ? String(row[woRatingIdx] || "").trim() : "";
+        const ratingVal = ratingStr === "" || isNaN(parseInt(ratingStr)) ? null : parseInt(ratingStr);
+
+        const rStats = officerRatingStats.get(nameKey) || { 
+          totalWo: 0, r5: 0, r34: 0, r12: 0, noR: 0, 
+          regu: reguValue,
+          displayName: nameRaw
+        };
+        if (isPlnMobile) rStats.totalWo++;
+        
+        if (ratingVal === null) {
+          rStats.noR++;
+        } else if (ratingVal === 5) {
+          rStats.r5++;
+        } else if (ratingVal === 4 || ratingVal === 3) {
+          rStats.r34++;
+        } else if (ratingVal === 2 || ratingVal === 1) {
+          rStats.r12++;
+        }
+        if (reguValue && (rStats.regu === "" || rStats.regu === "Unknown")) rStats.regu = reguValue;
+        officerRatingStats.set(nameKey, rStats);
+      }
 
       const reportId = String(row[woIdIdx] || row[13] || "").trim().toUpperCase(); // Prefer detect, fallback to N (13)
       if (!reportId) return;
@@ -537,7 +581,6 @@ export class GoogleSheetsService {
       let poskoName = (poPoskoIdx !== -1 && row[poPoskoIdx]) ? String(row[poPoskoIdx]).trim() : ulpName;
 
       const reguValue = String(row[poReguIdx] || "").trim();
-      if (!this.isValidRegu(ulpName, reguValue)) return;
       
       const displayUlpName = ulpName.toUpperCase().replace(/^POSKO ULP\s+/i, "").trim();
       const displayPoskoName = poskoName.toUpperCase().trim();
@@ -701,6 +744,44 @@ export class GoogleSheetsService {
         persenPo: u.persenPo
       })),
       ulpPerformance,
+      rating: (() => {
+        let officerRatings: OfficerRating[] = [];
+        let totalFeedbackCount = 0;
+        let weightedRatingSum = 0;
+
+        // Process based on aggregated stats from WO sheet filtered by ULP unique names
+        officerRatingStats.forEach((stats) => {
+          const ratedCount = stats.r5 + stats.r34 + stats.r12;
+          totalFeedbackCount += ratedCount;
+          weightedRatingSum += (stats.r5 * 5) + (stats.r34 * 3.5) + (stats.r12 * 1.5);
+
+          const pctValue = stats.totalWo > 0 
+            ? Math.round((stats.r5 / stats.totalWo) * 100) 
+            : 100;
+
+          officerRatings.push({
+            name: stats.displayName,
+            ulp: stats.regu,
+            totalWoPlnMobile: stats.totalWo,
+            rating5: stats.r5,
+            rating34: stats.r34,
+            rating12: stats.r12,
+            noRating: stats.noR,
+            percentageKomulatif: `${pctValue}%`
+          });
+        });
+
+        // Optional: Sort by name or total WO
+        officerRatings.sort((a, b) => b.totalWoPlnMobile - a.totalWoPlnMobile || a.name.localeCompare(b.name));
+
+        return {
+          officerRatings,
+          summary: {
+            avgRating: totalFeedbackCount > 0 ? weightedRatingSum / totalFeedbackCount : 5.0,
+            totalFeedback: totalFeedbackCount
+          }
+        };
+      })(),
       cctvUsage: mappedCctvUsage,
       rawWoRows: filteredWoRows,
       rawPoRows: filteredPoRows,

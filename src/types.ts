@@ -27,6 +27,7 @@ export interface DashboardData {
   allUlps: string[];
   allPoskos: string[];
   overSla: OverSLAData;
+  rating: RatingData;
   rawWoRows: any[][];
   rawPoRows: any[][];
   woHeaders: string[];
@@ -48,6 +49,25 @@ export interface OverSLAData {
   officerOverSlaRpt: { name: string; count: number }[];
   officerOverSlaRct: { name: string; count: number }[];
   ulpDistribution: { name: string; value: number }[];
+}
+
+export interface RatingData {
+  officerRatings: OfficerRating[];
+  summary: {
+    avgRating: number;
+    totalFeedback: number;
+  };
+}
+
+export interface OfficerRating {
+  name: string;
+  ulp: string;
+  totalWoPlnMobile: number;
+  rating5: number;
+  rating34: number;
+  rating12: number;
+  noRating: number;
+  percentageKomulatif: string;
 }
 
 export interface OfficerPerformance {

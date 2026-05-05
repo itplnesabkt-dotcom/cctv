@@ -75,7 +75,13 @@ export default function App() {
             totalPoCctv: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.totalPoPakaiCctv, 0),
             dataAktif: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.jumlahPoTotal, 0),
           }
-        : data.summary
+        : data.summary,
+      rating: {
+        ...data.rating,
+        officerRatings: selectedUlp
+          ? data.rating.officerRatings.filter(o => o.ulp === selectedUlp)
+          : data.rating.officerRatings
+      }
     };
   }, [data, selectedUlp]);
 
@@ -285,7 +291,7 @@ export default function App() {
             ) : activeTab === 'OVER_SLA' ? (
               <OverSLAPage data={filteredData?.overSla || data.overSla} />
             ) : (
-              <RatingPage data={data} />
+              <RatingPage data={filteredData || data} />
             )}
           </motion.div>
         </AnimatePresence>
