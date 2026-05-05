@@ -13,9 +13,3 @@ export function formatNumber(value: any, decimals: number = 0): string {
     maximumFractionDigits: decimals,
   });
 }
-
-export function safeToFixed(value: any, decimals: number = 0): string {
-  const num = Number(value);
-  if (isNaN(num)) return "0." + "0".repeat(decimals);
-  return num.toFixed(decimals);
-}

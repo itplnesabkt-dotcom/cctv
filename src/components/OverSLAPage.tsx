@@ -16,12 +16,12 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
       {/* Top Section - 3 Columns */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column - Summary Cards (col-span-2) */}
-        <div className="lg:col-span-2 flex flex-col gap-3">
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
-            <div className="px-4 py-2 bg-orange-500 text-white flex items-center gap-2">
+        <div className="lg:col-span-2 h-full">
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm h-full flex flex-col">
+            <div className="px-4 py-2 bg-orange-500 text-white flex items-center gap-2 shrink-0">
               <h4 className="text-[10px] font-black italic tracking-tighter uppercase">RINGKASAN DATA</h4>
             </div>
-            <div className="p-3 flex flex-col gap-3">
+            <div className="p-3 flex flex-col gap-3 flex-1 bg-gray-50/30">
               <StatCard label="TOTAL JUMLAH GANGGUAN" value={data.totalGangguan} color="#4CAF50" />
               <StatCard label="DURASI RPT TERTINGGI" value={data.highestRpt} color="#FF7043" />
               <StatCard label="DURASI RCT TERTINGGI" value={data.highestRct} color="#616161" />
@@ -31,19 +31,10 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
               <StatCard label="RATA-RATA RCT" value={data.avgRct} color="#2E7D32" />
             </div>
           </div>
-          
-          <SmallTable 
-            title="SEBARAN WO" 
-            subtitle="PER SHIFT" 
-            headers={['SHIFT', 'JML_BON']}
-            data={data.shiftDistribution.map(s => [s.name, s.value.toLocaleString()])}
-            color="#FFA726"
-            headerBg="bg-orange-500"
-          />
         </div>
 
         {/* Center Column - Large Table (col-span-6) */}
-        <div className="lg:col-span-6">
+        <div className="lg:col-span-6 h-full">
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden flex flex-col shadow-sm h-full">
             <div className="px-6 py-4 flex items-center justify-between bg-green-600 text-white">
               <div className="flex items-center gap-3">
@@ -74,11 +65,11 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
                       transition={{ delay: idx * 0.03 }}
                       className="hover:bg-gray-50 transition-colors"
                     >
-                      <td className="px-4 py-3 text-[10px] font-black text-brand-primary">{row[0]}</td>
-                      <td className="px-4 py-3 text-[10px] text-gray-600">{row[1]}</td>
-                      <td className="px-4 py-3 text-[10px] text-gray-600 font-bold">{row[2]}</td>
-                      <td className="px-4 py-3 text-[10px] font-black text-right text-brand-secondary">{row[3]}</td>
-                      <td className="px-4 py-3 text-[10px] font-black text-right text-brand-primary">{row[4]}</td>
+                      <td className="px-4 py-3 text-[12px] font-black text-brand-primary">{row[0]}</td>
+                      <td className="px-4 py-3 text-[12px] text-gray-600">{row[1]}</td>
+                      <td className="px-4 py-3 text-[12px] text-gray-600 font-bold">{row[2]}</td>
+                      <td className="px-4 py-3 text-[12px] font-black text-right text-brand-secondary">{row[3]}</td>
+                      <td className="px-4 py-3 text-[12px] font-black text-right text-brand-primary">{row[4]}</td>
                     </motion.tr>
                   ))}
                 </tbody>
@@ -127,7 +118,7 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
           <div className="flex-1 min-h-[300px]">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-1.5 h-6 bg-brand-secondary rounded-full" />
-              <h3 className="text-sm font-black italic tracking-tighter text-brand-primary uppercase">
+              <h3 className="text-base font-black italic tracking-tighter text-brand-primary uppercase">
                 JUMLAH WO <span className="text-brand-secondary">MENURUT ULP</span>
               </h3>
             </div>
@@ -149,7 +140,7 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
           <div className="w-full md:w-1/3 min-h-[300px] border-l border-gray-50 pl-0 md:pl-8">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-1.5 h-6 bg-[#FFD700] rounded-full" />
-              <h3 className="text-sm font-black italic tracking-tighter text-brand-primary uppercase">
+              <h3 className="text-base font-black italic tracking-tighter text-brand-primary uppercase">
                 SEBARAN <span className="text-[#FFD700]">PER SHIFT</span>
               </h3>
             </div>

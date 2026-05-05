@@ -1,4 +1,4 @@
-import { DashboardData, MainTableEntry, UnitRecap, OfficerPerformance, CCTVUsage } from "../types.ts";
+import { DashboardData, OfficerPerformance, CCTVUsage } from "../types.ts";
 import Papa from "papaparse";
 
 export class GoogleSheetsService {
@@ -78,43 +78,6 @@ export class GoogleSheetsService {
       4. Click Publish
       5. Ensure SPREADSHEET_ID "${this.SPREADSHEET_ID}" is correct.`);
     return [];
-  }
-
-  static async updateSheetData(sheetName: string, data: any[]): Promise<boolean> {
-    // In Vite, environment variables are accessed via import.meta.env
-    // and must be prefixed with VITE_ to be exposed to the client.
-    // We use optional chaining and multiple fallback checks to prevent "undefined" errors.
-    const metaEnv = (import.meta as any).env;
-    let scriptUrl = metaEnv?.VITE_APPS_SCRIPT_URL;
-    
-    if (!scriptUrl) {
-      console.error("VITE_APPS_SCRIPT_URL is not defined in environment. Please check your .env file or AI Studio Settings.");
-      return false;
-    }
-
-    // Clean URL from quotes if any (sometimes users add them in .env)
-    scriptUrl = scriptUrl.trim().replace(/^["']|["']$/g, '');
-
-    try {
-      // Using a simple POST with text/plain to avoid CORS preflight issues with Apps Script
-      await fetch(scriptUrl, {
-        method: 'POST',
-        mode: 'no-cors', 
-        headers: {
-          'Content-Type': 'text/plain',
-        },
-        body: JSON.stringify({
-          sheetName,
-          data, // Array of arrays [[col1, col2], [row1col1, row1col2]]
-          spreadsheetId: this.SPREADSHEET_ID
-        }),
-      });
-
-      return true;
-    } catch (error) {
-      console.error(`Error updating sheet ${sheetName}:`, error);
-      return false;
-    }
   }
 
   private static cleanName(name: any): string {
@@ -471,6 +434,15 @@ export class GoogleSheetsService {
         woOverSlaRptList.push([reportId, tglLapor!.toLocaleString('id-ID'), nameRaw, Math.round(rpt * 100) / 100, rctVal >= 0 ? Math.round(rctVal * 100) / 100 : '-', durasiWo]);
       }
 
+      if (isWithinUlp) {
+        if (rpt >= 30) {
+          officerRptOverSla.set(nameRaw, (officerRptOverSla.get(nameRaw) || 0) + 1);
+        }
+        if (rctVal >= 45) {
+          officerRctOverSla.set(nameRaw, (officerRctOverSla.get(nameRaw) || 0) + 1);
+        }
+      }
+
       if (isWithinUlp && !processedGlobalWoIds.has(reportId)) {
         processedGlobalWoIds.add(reportId);
         if (rpt > 30) rptOver30Ids.add(reportId);
@@ -480,7 +452,6 @@ export class GoogleSheetsService {
           totalRpt += rpt;
           rptCount++;
           if (rpt >= 30) {
-            officerRptOverSla.set(nameRaw, (officerRptOverSla.get(nameRaw) || 0) + 1);
             ulpMapDistribution.set(displayUlpName, (ulpMapDistribution.get(displayUlpName) || 0) + 1);
           }
         }
@@ -488,7 +459,6 @@ export class GoogleSheetsService {
           if (rctVal > highestRct) highestRct = rctVal;
           totalRct += rctVal;
           rctCount++;
-          if (rctVal >= 60) officerRctOverSla.set(nameRaw, (officerRctOverSla.get(nameRaw) || 0) + 1);
         }
         const shift = String(row[woShiftIdx] || 'null').toUpperCase().trim();
         shiftMap.set(shift, (shiftMap.get(shift) || 0) + 1);
@@ -720,14 +690,6 @@ export class GoogleSheetsService {
           .map(([name, stats]) => ({ name, value: stats.total }))
           .sort((a, b) => b.value - a.value),
       },
-      unitRecap: [
-        { 
-          unit: "UP3 BUKITTINGGI", 
-          total: totalWoCount, 
-          valid: totalWoCctvCount, 
-          invalid: totalWoCount - totalWoCctvCount 
-        },
-      ],
       officerPerformance: mappedCctvUsage.map(u => ({
         name: u.namaPetugas,
         ulp: u.ulp,
@@ -740,7 +702,6 @@ export class GoogleSheetsService {
       })),
       ulpPerformance,
       cctvUsage: mappedCctvUsage,
-      mainTable: [], // Can be populated from another sheet if needed
       rawWoRows: filteredWoRows,
       rawPoRows: filteredPoRows,
       woHeaders: woRows[woHeaderIdx] || [],

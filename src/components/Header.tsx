@@ -2,12 +2,11 @@ import React from 'react';
 import { LayoutGrid, FileText, Scissors, Zap, Wallet, BarChart2, ShieldCheck, Settings } from 'lucide-react';
 
 interface HeaderProps {
-  onAdminClick: () => void;
-  activeTab: 'CCTV' | 'OVER_SLA';
-  onTabChange: (tab: 'CCTV' | 'OVER_SLA') => void;
+  activeTab: 'CCTV' | 'OVER_SLA' | 'RATING';
+  onTabChange: (tab: 'CCTV' | 'OVER_SLA' | 'RATING') => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onAdminClick, activeTab, onTabChange }) => {
+export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange }) => {
   return (
     <header className="bg-[#0a1128] text-white h-16 flex items-center justify-between px-6 sticky top-0 z-50">
       <div className="flex items-center gap-4">
@@ -38,7 +37,12 @@ export const Header: React.FC<HeaderProps> = ({ onAdminClick, activeTab, onTabCh
           active={activeTab === 'OVER_SLA'} 
           onClick={() => onTabChange('OVER_SLA')}
         />
-        <NavItem icon={<ShieldCheck size={16} />} label="ADMIN" onClick={onAdminClick} />
+        <NavItem 
+          icon={<Zap size={16} />} 
+          label="RATING" 
+          active={activeTab === 'RATING'} 
+          onClick={() => onTabChange('RATING')}
+        />
       </nav>
 
       <div className="flex items-center gap-4">

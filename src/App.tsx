@@ -7,11 +7,9 @@ import { POUP3Card } from './components/POUP3Card.tsx';
 import { ULPPOStatsCard } from './components/ULPPOStatsCard.tsx';
 import { PerformanceTable } from './components/PerformanceTable.tsx';
 import { ULPPerformanceTable } from './components/ULPPerformanceTable.tsx';
-import { CCTVUsageTable } from './components/CCTVUsageTable.tsx';
-import { DataTable } from './components/DataTable.tsx';
 import { DetailModal } from './components/DetailModal.tsx';
-import { AdminPanel } from './components/AdminPanelComponent.tsx';
 import { OverSLAPage } from './components/OverSLAPage.tsx';
+import { RatingPage } from './components/RatingPage.tsx';
 import { GoogleSheetsService } from './services/googleSheetsService.ts';
 import { DashboardData } from './types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -24,7 +22,7 @@ export default function App() {
   const [selectedUlp, setSelectedUlp] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [activeTab, setActiveTab] = useState<'CCTV' | 'OVER_SLA'>('CCTV');
+  const [activeTab, setActiveTab] = useState<'CCTV' | 'OVER_SLA' | 'RATING'>('CCTV');
   
   // Clear filter when changing tabs since the filter source (ULP vs Posko) changes
   useEffect(() => {
@@ -86,9 +84,6 @@ export default function App() {
   const [modalTitle, setModalTitle] = useState("");
   const [modalHeaders, setModalHeaders] = useState<string[]>([]);
   const [modalRows, setModalRows] = useState<any[][]>([]);
-
-  // Admin Panel State
-  const [adminOpen, setAdminOpen] = useState(false);
 
   // Filter logic options
   const filterList = React.useMemo(() => {
@@ -229,7 +224,6 @@ export default function App() {
       )}
 
       <Header 
-        onAdminClick={() => setAdminOpen(true)} 
         activeTab={activeTab}
         onTabChange={setActiveTab}
       />
@@ -288,8 +282,10 @@ export default function App() {
                   <ULPPOStatsCard ulpData={filteredData?.ulpPerformance || []} />
                 </div>
               </div>
-            ) : (
+            ) : activeTab === 'OVER_SLA' ? (
               <OverSLAPage data={filteredData?.overSla || data.overSla} />
+            ) : (
+              <RatingPage data={data} />
             )}
           </motion.div>
         </AnimatePresence>
@@ -301,11 +297,6 @@ export default function App() {
         title={modalTitle}
         headers={modalHeaders}
         rows={modalRows}
-      />
-
-      <AdminPanel 
-        isOpen={adminOpen}
-        onClose={() => setAdminOpen(false)}
       />
 
       <footer className="bg-white border-t border-gray-100 p-4 text-center">
