@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Award, TrendingUp, Users, Zap, ShieldCheck, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Award, TrendingUp, Users, Zap, ShieldCheck, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import { DashboardData } from '../types.ts';
 
 interface RatingPageProps {
@@ -199,6 +199,18 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                         <option key={regu} value={regu} className="text-brand-primary">{regu}</option>
                       ))}
                     </select>
+                    {selectedRegu !== 'Semua Regu' && (
+                      <button 
+                        onClick={() => {
+                          setSelectedRegu('Semua Regu');
+                          setCurrentPage(1);
+                        }}
+                        className="ml-1 p-1 hover:bg-white/10 rounded-full transition-colors"
+                        title="Reset Filter"
+                      >
+                        <RotateCcw size={12} className="text-brand-secondary" />
+                      </button>
+                    )}
                   </div>
                   <div className="hidden sm:flex items-center gap-3 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
                     <Users size={16} className="text-brand-secondary" />
@@ -307,6 +319,18 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                         <option key={unit} value={unit} className="text-brand-primary">{unit}</option>
                       ))}
                     </select>
+                    {selectedUnit !== 'Semua Unit' && (
+                      <button 
+                        onClick={() => {
+                          setSelectedUnit('Semua Unit');
+                          setCurrentKPPage(1);
+                        }}
+                        className="ml-1 p-1 hover:bg-white/10 rounded-full transition-colors"
+                        title="Reset Filter"
+                      >
+                        <RotateCcw size={12} className="text-brand-secondary" />
+                      </button>
+                    )}
                   </div>
                   <div className="hidden sm:flex items-center gap-3 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
                     <ShieldCheck size={16} className="text-brand-secondary" />
