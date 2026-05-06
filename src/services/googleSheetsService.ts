@@ -1,4 +1,4 @@
-import { DashboardData, OfficerPerformance, CCTVUsage, OfficerRating } from "../types.ts";
+import { DashboardData, OfficerPerformance, CCTVUsage, OfficerRating, KPRating } from "../types.ts";
 import Papa from "papaparse";
 
 export class GoogleSheetsService {
@@ -406,6 +406,15 @@ export class GoogleSheetsService {
       displayName: string;
     }>();
 
+    const kpRatingStats = new Map<string, { 
+      totalWo: number; 
+      r5: number; 
+      r34: number; 
+      r12: number; 
+      noR: number;
+      ulp: string;
+    }>();
+
     const filteredWoRows: any[][] = [];
     const allPoskosSet = new Set<string>();
 
@@ -438,6 +447,44 @@ export class GoogleSheetsService {
         .replace(/^POSKO\s+/i, "")
         .trim();
     };
+
+    const allRegusInUlp = new Map<string, string>(); // Regu -> ULP
+    if (woReguIdx !== -1) {
+      woRows.slice(woDataStart).forEach(row => {
+        const regu = String(row[woReguIdx] || "").trim();
+        if (regu && regu !== "Unknown" && regu.toLowerCase() !== "nama regu") {
+          // Determine ULP for this regu to allow filtering
+          let rUlp = "Unknown";
+          if (woUlpIdx !== -1 && woUlpIdx < row.length) {
+            rUlp = standardizeUlpName(String(row[woUlpIdx] || ""));
+          } else if (woPoskoidIdx !== -1 && woPoskoidIdx < row.length) {
+            const pId = String(row[woPoskoidIdx] || "").trim();
+            rUlp = pId ? standardizeUlpName(ulpMap.get(pId) || "") : "Unknown";
+          } else if (woPoskoIdx !== -1 && woPoskoIdx < row.length) {
+            const pName = this.normalizeForMatch(String(row[woPoskoIdx] || ""));
+            const uId = poskoToUlpIdMap.get(pName);
+            rUlp = uId ? standardizeUlpName(ulpMap.get(uId) || "") : "Unknown";
+          }
+          
+          if (!allRegusInUlp.has(regu) || (allRegusInUlp.get(regu) === "Unknown" && rUlp !== "Unknown")) {
+            allRegusInUlp.set(regu, rUlp);
+          }
+        }
+      });
+    }
+
+    // Initialize KP STATS with all regus matching the ULP filter
+    const targetUlp = selectedUlp && selectedUlp !== "ALL" ? standardizeUlpName(selectedUlp) : null;
+    allRegusInUlp.forEach((uName, rName) => {
+      const standardizedRUlp = standardizeUlpName(uName);
+      const isWithinUlp = !targetUlp || standardizedRUlp === targetUlp;
+      if (isWithinUlp) {
+        kpRatingStats.set(rName, { 
+          totalWo: 0, r5: 0, r34: 0, r12: 0, noR: 0, 
+          ulp: uName 
+        });
+      }
+    });
 
     woRows.slice(woDataStart).forEach((row) => {
       if (!row || row.length < 3) return;
@@ -510,6 +557,30 @@ export class GoogleSheetsService {
             totalRating12++;
             rating12List.push(rowDetail);
           }
+        }
+
+        // KP STATS AGGREGATION
+        const reguValue = woReguIdx !== -1 && woReguIdx < row.length ? String(row[woReguIdx] || "").trim() : "";
+        const kpKey = reguValue || "Unknown";
+        if (kpKey !== "Unknown") {
+          const kStats = kpRatingStats.get(kpKey) || { 
+            totalWo: 0, r5: 0, r34: 0, r12: 0, noR: 0, 
+            ulp: ulpName
+          };
+          if (isPlnMobile) {
+            kStats.totalWo++;
+            if (ratingVal === null || ratingStr === "") {
+              kStats.noR++;
+            } else if (ratingVal === 5) {
+              kStats.r5++;
+            } else if (ratingVal === 4 || ratingVal === 3) {
+              kStats.r34++;
+            } else if (ratingVal === 2 || ratingVal === 1) {
+              kStats.r12++;
+            }
+          }
+          if (ulpName && (kStats.ulp === "" || kStats.ulp === "Unknown")) kStats.ulp = ulpName;
+          kpRatingStats.set(kpKey, kStats);
         }
       }
 
@@ -891,8 +962,64 @@ export class GoogleSheetsService {
         // Optional: Sort by name or total WO
         officerRatings.sort((a, b) => b.totalWoPlnMobile - a.totalWoPlnMobile || a.name.localeCompare(b.name));
 
+        const kpRatings: KPRating[] = [];
+        kpRatingStats.forEach((stats, kpName) => {
+          const pct = stats.totalWo > 0 ? Math.round((stats.r5 / stats.totalWo) * 100) : 100;
+          kpRatings.push({
+            namaKp: kpName.toUpperCase(),
+            ulp: stats.ulp.toUpperCase(),
+            totalWoPlnMobile: stats.totalWo,
+            rating5: stats.r5,
+            rating34: stats.r34,
+            rating12: stats.r12,
+            noRating: stats.noR,
+            percentageKomulatif: `${pct}%`
+          });
+        });
+        kpRatings.sort((a, b) => b.totalWoPlnMobile - a.totalWoPlnMobile);
+
+        const specificUlps = ["BUKITTINGGI", "PADANG PANJANG", "LUBUK SIKAPING", "LUBUK BASUNG", "SIMPANG EMPAT", "BASO", "KOTO TUO"];
+        const ulpRatingMap = new Map<string, { 
+          totalWo: number; r5: number; r34: number; r12: number; noR: number;
+        }>();
+        
+        // Initialize with zeros for requested ULPs
+        specificUlps.forEach(ulp => {
+          ulpRatingMap.set(ulp, { totalWo: 0, r5: 0, r34: 0, r12: 0, noR: 0 });
+        });
+
+        // Use kpRatingStats to aggregate by ULP
+        kpRatingStats.forEach((stats) => {
+          const sUlp = standardizeUlpName(stats.ulp);
+          // Find the matching specific ULP (some might be slightly different in spelling, but standardizeUlpName should handle most)
+          const matchedUlp = specificUlps.find(su => standardizeUlpName(su) === sUlp);
+          if (matchedUlp) {
+            const current = ulpRatingMap.get(matchedUlp)!;
+            current.totalWo += stats.totalWo;
+            current.r5 += stats.r5;
+            current.r34 += stats.r34;
+            current.r12 += stats.r12;
+            current.noR += stats.noR;
+          }
+        });
+
+        const ulpRatings: ULPRating[] = Array.from(ulpRatingMap.entries()).map(([name, stats]) => {
+          const pct = stats.totalWo > 0 ? Math.round((stats.r5 / stats.totalWo) * 100) : 100;
+          return {
+            namaUlp: name,
+            totalWoPlnMobile: stats.totalWo,
+            rating5: stats.r5,
+            rating34: stats.r34,
+            rating12: stats.r12,
+            noRating: stats.noR,
+            percentageKomulatif: `${pct}%`
+          };
+        });
+
         return {
           officerRatings,
+          kpRatings,
+          ulpRatings,
           summary: {
             avgRating: totalFeedbackCount > 0 ? weightedRatingSum / totalFeedbackCount : 5.0,
             totalFeedback: totalFeedbackCount

@@ -67,6 +67,29 @@ export interface RatingData {
   rating34List: any[][];
   rating12List: any[][];
   noRatingList: any[][];
+  kpRatings: KPRating[];
+  ulpRatings: ULPRating[];
+}
+
+export interface ULPRating {
+  namaUlp: string;
+  totalWoPlnMobile: number;
+  rating5: number;
+  rating34: number;
+  rating12: number;
+  noRating: number;
+  percentageKomulatif: string;
+}
+
+export interface KPRating {
+  namaKp: string;
+  ulp: string;
+  totalWoPlnMobile: number;
+  rating5: number;
+  rating34: number;
+  rating12: number;
+  noRating: number;
+  percentageKomulatif: string;
 }
 
 export interface OfficerRating {
