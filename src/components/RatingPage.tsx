@@ -156,16 +156,31 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6 items-stretch">
-        {/* COLUMN 1: RINGKASAN DATA ULP (LEFT) - Reduced width */}
-        <div className="lg:w-56 xl:w-64 flex flex-col gap-6">
-          <div className="flex items-center gap-3 px-2 shrink-0">
-            <Award size={18} className="text-brand-secondary" />
-            <h3 className="text-sm font-black italic uppercase tracking-widest text-slate-800">RINGKASAN DATA ULP</h3>
-          </div>
-          <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 max-h-[1200px] scrollbar-thin scrollbar-thumb-gray-200">
-            {rating.ulpRatings.map((ulp, idx) => (
-              <ULPSummaryCard key={idx} ulp={ulp} delay={idx * 0.05} />
-            ))}
+        {/* COLUMN 1: RINGKASAN DATA ULP (LEFT) - Reduced width and matched height */}
+        <div className="lg:w-56 xl:w-64 flex flex-col min-w-0">
+          <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm flex flex-col h-full">
+            <div className="px-5 py-4 bg-[#1b3d5d] text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-xl text-brand-secondary">
+                  <Award size={18} />
+                </div>
+                <div>
+                  <h3 className="text-[11px] font-black italic tracking-tighter uppercase leading-none">RINGKASAN DATA ULP</h3>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 max-h-[1200px] scrollbar-thin scrollbar-thumb-gray-200 bg-slate-50/30">
+              {rating.ulpRatings.map((ulp, idx) => (
+                <ULPSummaryCard key={idx} ulp={ulp} delay={idx * 0.05} />
+              ))}
+            </div>
+
+            <div className="bg-slate-50 px-4 py-3 border-t border-gray-100 flex items-center justify-center shrink-0">
+              <span className="text-[9px] font-black text-slate-400 uppercase italic tracking-widest">
+                TOTAL {rating.ulpRatings.length} ULP
+              </span>
+            </div>
           </div>
         </div>
 
@@ -199,7 +214,7 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
               </div>
             </div>
             
-            <div className="flex-1 overflow-x-auto overflow-y-auto max-h-[1050px] scrollbar-thin scrollbar-thumb-gray-200">
+            <div className="flex-1 overflow-x-auto overflow-y-auto max-h-[1200px] scrollbar-thin scrollbar-thumb-gray-200">
               <table className="w-full text-center border-collapse">
                 <thead className="sticky top-0 z-10">
                   <tr className="text-white text-[9px] font-black uppercase tracking-tight leading-none bg-[#1b3d5d]">
@@ -404,44 +419,55 @@ interface ULPSummaryCardProps {
 }
 
 const ULPSummaryCard: React.FC<ULPSummaryCardProps> = ({ ulp, delay }) => {
+  const percentageValue = typeof ulp.percentageKomulatif === 'string' 
+    ? parseInt(ulp.percentageKomulatif) 
+    : ulp.percentageKomulatif;
+
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
       transition={{ delay }}
-      className="flex-1 flex flex-col bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md hover:-translate-y-1 transition-all group"
+      className="flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-all group"
     >
-      <div className="bg-[#1b3d5d] px-5 py-3 flex items-center justify-between shrink-0">
-        <h4 className="text-[10px] font-black italic uppercase text-white tracking-widest truncate mr-4 leading-none">{ulp.namaUlp}</h4>
-        <div className={`px-2 py-0.5 rounded-lg text-[9px] font-black shadow-lg ${ulp.percentageKomulatif === '100%' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
+      <div className="bg-[#1b3d5d] px-4 py-2 flex items-center justify-between shrink-0">
+        <h4 className="text-[9px] font-black italic uppercase text-white tracking-widest truncate mr-2 leading-none">{ulp.namaUlp}</h4>
+        <div className={`px-1.5 py-0.5 rounded text-[8px] font-black ${ulp.percentageKomulatif === '100%' ? 'bg-emerald-500' : 'bg-rose-500'} text-white`}>
           {ulp.percentageKomulatif}
         </div>
       </div>
-      <div className="p-4 bg-gradient-to-b from-transparent to-slate-50/50 flex-1 flex flex-col justify-center">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col bg-blue-50/50 p-2 rounded-2xl border border-blue-100/50 hover:bg-blue-50 transition-colors">
-            <span className="text-[7px] font-black text-blue-400 ml-1 uppercase tracking-tighter mb-1">TOTAL WO</span>
-            <span className="text-base font-black text-blue-700 leading-none">{ulp.totalWoPlnMobile}</span>
-          </div>
-          <div className="flex flex-col bg-emerald-50/50 p-2 rounded-2xl border border-emerald-100/50 hover:bg-emerald-50 transition-colors">
-            <span className="text-[7px] font-black text-emerald-500 ml-1 uppercase tracking-tighter mb-1">RATING 5</span>
-            <span className="text-base font-black text-emerald-600 leading-none">{ulp.rating5}</span>
-          </div>
-          <div className="flex flex-col bg-amber-50/50 p-2 rounded-2xl border border-amber-100/50 hover:bg-amber-50 transition-colors">
-            <span className="text-[7px] font-black text-amber-500 ml-1 uppercase tracking-tighter mb-1">RATING 3-4</span>
-            <span className="text-base font-black text-amber-600 leading-none">{ulp.rating34}</span>
-          </div>
-          <div className="flex flex-col bg-rose-50/50 p-2 rounded-2xl border border-rose-100/50 hover:bg-rose-50 transition-colors">
-            <span className="text-[7px] font-black text-rose-500 ml-1 uppercase tracking-tighter mb-1">RATING 1-2</span>
-            <span className="text-base font-black text-rose-600 leading-none">{ulp.rating12}</span>
-          </div>
+      <div className="p-2 gap-2 grid grid-cols-3">
+        {/* TOTAL WO */}
+        <div className="bg-blue-50/50 p-1.5 rounded-lg border border-blue-100/50 flex flex-col items-center">
+          <span className="text-[6px] font-black text-blue-400 uppercase tracking-tighter mb-0.5 text-center leading-none">TOTAL WO</span>
+          <span className="text-xs font-black text-blue-700 leading-none">{ulp.totalWoPlnMobile}</span>
         </div>
-        <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between group-hover:border-blue-100 transition-colors shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-1 h-1 rounded-full bg-slate-400"></div>
-            <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter leading-none">TANPA RATING</span>
-          </div>
-          <span className="text-xs font-black text-slate-800">{ulp.noRating}</span>
+        {/* R5 */}
+        <div className="bg-emerald-50/50 p-1.5 rounded-lg border border-emerald-100/50 flex flex-col items-center">
+          <span className="text-[6px] font-black text-emerald-500 uppercase tracking-tighter mb-0.5 text-center leading-none font-sans">R5</span>
+          <span className="text-xs font-black text-emerald-600 leading-none">{ulp.rating5}</span>
+        </div>
+        {/* R3-4 */}
+        <div className="bg-amber-50/50 p-1.5 rounded-lg border border-amber-100/50 flex flex-col items-center">
+          <span className="text-[6px] font-black text-amber-500 uppercase tracking-tighter mb-0.5 text-center leading-none font-sans">R3-4</span>
+          <span className="text-xs font-black text-amber-600 leading-none">{ulp.rating34}</span>
+        </div>
+        {/* R1-2 */}
+        <div className="bg-rose-50/50 p-1.5 rounded-lg border border-rose-100/50 flex flex-col items-center">
+          <span className="text-[6px] font-black text-rose-500 uppercase tracking-tighter mb-0.5 text-center leading-none font-sans">R1-2</span>
+          <span className="text-xs font-black text-rose-600 leading-none">{ulp.rating12}</span>
+        </div>
+        {/* NONE */}
+        <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-100 flex flex-col items-center">
+          <span className="text-[6px] font-black text-slate-400 uppercase tracking-tighter mb-0.5 text-center leading-none font-sans">NONE</span>
+          <span className="text-xs font-black text-slate-600 leading-none">{ulp.noRating}</span>
+        </div>
+        {/* % */}
+        <div className={`${ulp.percentageKomulatif === '100%' ? 'bg-emerald-50' : 'bg-rose-50'} p-1.5 rounded-lg border border-current/10 flex flex-col items-center`}>
+          <span className={`text-[6px] font-black uppercase tracking-tighter mb-0.5 text-center leading-none font-sans ${ulp.percentageKomulatif === '100%' ? 'text-emerald-500' : 'text-rose-500'}`}>% KOM</span>
+          <span className={`text-xs font-black leading-none ${ulp.percentageKomulatif === '100%' ? 'text-emerald-600' : 'text-rose-600'}`}>
+            {typeof ulp.percentageKomulatif === 'string' ? ulp.percentageKomulatif.replace('%', '') : ulp.percentageKomulatif}
+          </span>
         </div>
       </div>
     </motion.div>
