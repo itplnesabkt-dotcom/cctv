@@ -46,12 +46,15 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
   };
 
   const uniqueRegus = ['Semua Regu', ...[...new Set(rating.officerRatings.map(officer => officer.regu).filter(Boolean))].sort()];
+  const uniqueUnits = ['Semua Unit', ...[...new Set(rating.officerRatings.map(officer => officer.ulp).filter(Boolean))].sort()];
   const uniqueKPRegus = ['Semua Regu', ...[...new Set(rating.kpRatings.map(kp => kp.regu).filter(Boolean))].sort()];
   const uniqueKPUnits = ['Semua Unit', ...[...new Set(rating.kpRatings.map(kp => kp.ulp).filter(Boolean))].sort()];
 
-  const filteredOfficers = selectedRegu === 'Semua Regu' 
-    ? rating.officerRatings 
-    : rating.officerRatings.filter(officer => officer.regu === selectedRegu);
+  const filteredOfficers = rating.officerRatings.filter(officer => {
+    const matchRegu = selectedRegu === 'Semua Regu' || officer.regu === selectedRegu;
+    const matchUnit = selectedUnit === 'Semua Unit' || officer.ulp === selectedUnit;
+    return matchRegu && matchUnit;
+  });
 
   const totalPages = Math.ceil(filteredOfficers.length / rowsPerPage);
   const startIndex = (currentPage - 1) * rowsPerPage;
@@ -187,7 +190,7 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
         {/* COLUMN 2: RATING PLN MOBILE PER PETUGAS (MIDDLE) - Equal weight */}
         <div className="flex-1 flex flex-col min-w-0">
           <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm flex flex-col h-full">
-            <div className="px-5 py-4 bg-[#1b3d5d] text-white flex items-center justify-between shrink-0">
+            <div className="px-5 py-4 bg-gradient-to-r from-[#06b6d4] to-[#1b3d5d] text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-white/10 rounded-xl text-brand-secondary">
                   <TrendingUp size={18} />
@@ -196,15 +199,31 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                   <h3 className="text-sm font-black italic tracking-tighter uppercase leading-none">RATING PER PETUGAS</h3>
                 </div>
               </div>
-              <div className="flex items-center gap-3 scale-90 origin-right">
-                <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl border border-white/20">
+              <div className="flex flex-wrap items-center gap-1.5 justify-end max-w-[50%]">
+                <div className="flex items-center gap-1.5 bg-white/10 px-2 py-1 rounded-xl border border-white/20">
+                  <span className="text-[8px] font-black uppercase text-white/60 shrink-0">UNIT:</span>
+                  <select 
+                    value={selectedUnit}
+                    onChange={(e) => {
+                      setSelectedUnit(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="bg-transparent text-white text-[8px] font-black uppercase outline-none cursor-pointer min-w-0"
+                  >
+                    {uniqueUnits.map(unit => (
+                      <option key={unit} value={unit} className="text-brand-primary">{unit}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-1.5 bg-white/10 px-2 py-1 rounded-xl border border-white/20">
+                  <span className="text-[8px] font-black uppercase text-white/60 shrink-0">REGU:</span>
                   <select 
                     value={selectedRegu}
                     onChange={(e) => {
                       setSelectedRegu(e.target.value);
                       setCurrentPage(1);
                     }}
-                    className="bg-transparent text-white text-[9px] font-black uppercase outline-none cursor-pointer"
+                    className="bg-transparent text-white text-[8px] font-black uppercase outline-none cursor-pointer min-w-0"
                   >
                     {uniqueRegus.map(regu => (
                       <option key={regu} value={regu} className="text-brand-primary">{regu}</option>
@@ -216,19 +235,19 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
             
             <div className="flex-1 overflow-x-auto overflow-y-auto max-h-[1200px] scrollbar-thin scrollbar-thumb-gray-200">
               <table className="w-full text-center border-collapse">
-                <thead className="sticky top-0 z-10">
-                  <tr className="text-white text-[9px] font-black uppercase tracking-tight leading-none bg-[#1b3d5d]">
+                <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#06b6d4] to-[#1b3d5d]">
+                  <tr className="text-white text-[9px] font-black uppercase tracking-tight leading-none bg-transparent">
                     <th rowSpan={2} className="p-0.5 min-w-[140px]">
-                      <div className="bg-[#1b3d5d] py-4 px-4 rounded-xl h-full flex items-center justify-start border border-white/10">PETUGAS</div>
+                      <div className="bg-[#3b82f6] py-4 px-4 rounded-xl h-full flex items-center justify-start border border-white/10">PETUGAS</div>
                     </th>
                     <th rowSpan={2} className="p-0.5 min-w-[100px]">
-                      <div className="bg-[#1b3d5d] py-4 px-4 rounded-xl h-full flex items-center justify-start border border-white/10">UNIT</div>
+                      <div className="bg-[#eab308] py-4 px-4 rounded-xl h-full flex items-center justify-start border border-white/10">UNIT</div>
                     </th>
                     <th colSpan={6} className="p-0.5">
-                      <div className="bg-[#1b3d5d] py-2 rounded-xl border border-white/10">KOMULATIF RATING PELAYANAN</div>
+                      <div className="bg-[#f43f5e] py-2 rounded-xl border border-white/10">KOMULATIF RATING PELAYANAN</div>
                     </th>
                   </tr>
-                  <tr className="text-white text-[8px] font-black uppercase tracking-tight leading-none bg-[#1b3d5d]">
+                  <tr className="text-white text-[8px] font-black uppercase tracking-tight leading-none bg-transparent">
                     <th className="p-0.5 w-16">
                       <div className="bg-[#334155] p-2.5 rounded-lg border border-white/10">WO</div>
                     </th>
@@ -252,16 +271,16 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                 <tbody className="bg-white">
                   {paginatedData.length > 0 ? (
                     paginatedData.map((item, idx) => (
-                      <tr key={idx} className="border-b border-gray-50 text-[10px] font-bold italic text-brand-primary h-12 hover:bg-blue-50/30 transition-colors group">
-                        <td className="px-4 text-left border-r border-gray-50 uppercase tracking-tight group-hover:text-blue-700 font-black truncate max-w-[140px]">{item.name}</td>
-                        <td className="px-4 text-left border-r border-gray-50 uppercase tracking-tight text-gray-400 font-medium truncate max-w-[100px]">{item.ulp}</td>
-                        <td className="px-2 border-r border-gray-50 font-black text-slate-700">{item.totalWoPlnMobile}</td>
-                        <td className="px-2 border-r border-gray-50 text-emerald-600 font-black">{item.rating5}</td>
-                        <td className="px-2 border-r border-gray-50 text-amber-600 font-black">{item.rating34}</td>
-                        <td className="px-2 border-r border-gray-50 text-rose-600 font-black">{item.rating12}</td>
-                        <td className="px-2 border-r border-gray-50 bg-slate-50 text-slate-800 font-medium">{item.noRating}</td>
+                      <tr key={idx} className="border-b border-gray-50 text-[10px] font-bold italic text-brand-primary hover:bg-blue-50/30 transition-colors group">
+                        <td className="px-4 py-[1.5px] text-left border-r border-gray-50 uppercase tracking-tight group-hover:text-blue-700 font-black truncate max-w-[140px]">{item.name}</td>
+                        <td className="px-4 py-[1.5px] text-left border-r border-gray-50 uppercase tracking-tight text-gray-400 font-medium truncate max-w-[100px]">{item.ulp}</td>
+                        <td className="px-2 py-[1.5px] border-r border-gray-50 font-black text-slate-700">{item.totalWoPlnMobile}</td>
+                        <td className="px-2 py-[1.5px] border-r border-gray-50 text-emerald-600 font-black">{item.rating5}</td>
+                        <td className="px-2 py-[1.5px] border-r border-gray-50 text-amber-600 font-black">{item.rating34}</td>
+                        <td className="px-2 py-[1.5px] border-r border-gray-50 text-rose-600 font-black">{item.rating12}</td>
+                        <td className="px-2 py-[1.5px] border-r border-gray-50 bg-slate-50 text-slate-800 font-medium">{item.noRating}</td>
                         <td className="p-0">
-                          <div className={`h-full w-full flex items-center justify-center font-black italic text-white text-[10px] ${item.percentageKomulatif === '100%' ? 'bg-emerald-500' : 'bg-rose-600'}`}>
+                          <div className={`h-8 w-full flex items-center justify-center font-black italic text-white text-[10px] ${item.percentageKomulatif === '100%' ? 'bg-emerald-500' : 'bg-rose-600'}`}>
                             {item.percentageKomulatif}
                           </div>
                         </td>
@@ -303,7 +322,7 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
         {/* COLUMN 3: RATING PER KANTOR PELAYANAN (RIGHT) - Equal weight */}
         <div className="flex-1 flex flex-col min-w-0">
           <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm flex flex-col h-full">
-            <div className="px-5 py-4 bg-[#1b3d5d] text-white flex items-center justify-between shrink-0">
+            <div className="px-5 py-4 bg-gradient-to-r from-[#1b3d5d] to-[#06b6d4] text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-white/10 rounded-xl text-brand-secondary">
                   <ShieldCheck size={18} />
@@ -342,19 +361,19 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
             
             <div className="flex-1 overflow-y-auto max-h-[1200px] scrollbar-thin scrollbar-thumb-gray-200">
               <table className="w-full text-center border-collapse">
-                <thead className="sticky top-0 z-10 bg-[#1b3d5d]">
-                  <tr className="text-white text-[9px] font-black uppercase tracking-tight leading-none bg-[#1b3d5d]">
+                <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#1b3d5d] to-[#06b6d4]">
+                  <tr className="text-white text-[9px] font-black uppercase tracking-tight leading-none bg-transparent">
                     <th rowSpan={2} className="p-0.5 min-w-[140px]">
-                      <div className="bg-[#1b3d5d] py-4 px-4 rounded-xl h-full flex items-center justify-start border border-white/10 text-left">KANTOR PELAYANAN</div>
+                      <div className="bg-[#3b82f6] py-4 px-4 rounded-xl h-full flex items-center justify-start border border-white/10 text-left">KANTOR PELAYANAN</div>
                     </th>
                     <th rowSpan={2} className="p-0.5 min-w-[100px]">
-                      <div className="bg-[#1b3d5d] py-4 px-4 rounded-xl h-full flex items-center justify-start border border-white/10 text-left">UNIT</div>
+                      <div className="bg-[#eab308] py-4 px-4 rounded-xl h-full flex items-center justify-start border border-white/10 text-left">UNIT</div>
                     </th>
                     <th colSpan={6} className="p-0.5">
-                      <div className="bg-[#1b3d5d] py-2 rounded-xl border border-white/10">KOMULATIF RATING PELAYANAN</div>
+                      <div className="bg-[#f43f5e] py-2 rounded-xl border border-white/10">KOMULATIF RATING PELAYANAN</div>
                     </th>
                   </tr>
-                  <tr className="text-white text-[8px] font-black uppercase tracking-tight leading-none bg-[#1b3d5d]">
+                  <tr className="text-white text-[8px] font-black uppercase tracking-tight leading-none bg-transparent">
                     <th className="p-0.5 w-16">
                       <div className="bg-[#334155] p-2.5 rounded-lg border border-white/10">WO</div>
                     </th>
@@ -378,16 +397,16 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                 <tbody className="bg-white">
                   {filteredKPs.length > 0 ? (
                     filteredKPs.map((kp, idx) => (
-                      <tr key={idx} className="border-b border-gray-50 text-[10px] font-bold italic text-brand-primary h-12 hover:bg-slate-50 transition-colors group">
-                        <td className="px-4 text-left border-r border-gray-50 uppercase tracking-tight font-black group-hover:text-blue-600 truncate max-w-[140px]">{kp.namaKp}</td>
-                        <td className="px-4 text-left border-r border-gray-50 uppercase tracking-tight text-slate-400 font-bold truncate max-w-[100px]">{kp.ulp}</td>
-                        <td className="px-2 border-r border-gray-50 text-slate-600 font-black">{kp.totalWoPlnMobile}</td>
-                        <td className="px-2 border-r border-gray-50 text-emerald-600 font-black">{kp.rating5}</td>
-                        <td className="px-2 border-r border-gray-50 text-amber-600 font-black">{kp.rating34}</td>
-                        <td className="px-2 border-r border-gray-50 text-rose-600 font-black">{kp.rating12}</td>
-                        <td className="px-2 border-r border-gray-50 bg-slate-50/50 text-slate-400">{kp.noRating}</td>
-                        <td className="p-0 h-12">
-                          <div className={`h-full w-full flex items-center justify-center font-black text-white text-[10px] ${kp.percentageKomulatif === '100%' ? 'bg-emerald-500' : 'bg-rose-500'}`}>
+                      <tr key={idx} className="border-b border-gray-50 text-[10px] font-bold italic text-brand-primary hover:bg-slate-50 transition-colors group">
+                        <td className="px-4 py-[1.5px] text-left border-r border-gray-50 uppercase tracking-tight font-black group-hover:text-blue-600 truncate max-w-[140px]">{kp.namaKp}</td>
+                        <td className="px-4 py-[1.5px] text-left border-r border-gray-50 uppercase tracking-tight text-slate-400 font-bold truncate max-w-[100px]">{kp.ulp}</td>
+                        <td className="px-2 py-[1.5px] border-r border-gray-50 text-slate-600 font-black">{kp.totalWoPlnMobile}</td>
+                        <td className="px-2 py-[1.5px] border-r border-gray-50 text-emerald-600 font-black">{kp.rating5}</td>
+                        <td className="px-2 py-[1.5px] border-r border-gray-50 text-amber-600 font-black">{kp.rating34}</td>
+                        <td className="px-2 py-[1.5px] border-r border-gray-50 text-rose-600 font-black">{kp.rating12}</td>
+                        <td className="px-2 py-[1.5px] border-r border-gray-50 bg-slate-50/50 text-slate-400">{kp.noRating}</td>
+                        <td className="p-0">
+                          <div className={`h-8 w-full flex items-center justify-center font-black text-white text-[10px] ${kp.percentageKomulatif === '100%' ? 'bg-emerald-500' : 'bg-rose-500'}`}>
                             {kp.percentageKomulatif}
                           </div>
                         </td>
