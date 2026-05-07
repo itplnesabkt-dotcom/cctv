@@ -13,8 +13,9 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
   const [currentKPPage, setCurrentKPPage] = useState(1);
   const [selectedRegu, setSelectedRegu] = useState('Semua Regu');
   const [selectedUnit, setSelectedUnit] = useState('Semua Unit');
-  const rowsPerPage = 12;
-  const kpRowsPerPage = 10;
+  const rowsPerPage = 21;
+  const [selectedKPRegu, setSelectedKPRegu] = useState('Semua Regu');
+  const [selectedKPUnit, setSelectedKPUnit] = useState('Semua Unit');
 
   const totalPct = rating.totalWoPlnMobile > 0 
     ? Math.round((rating.rating5 / rating.totalWoPlnMobile) * 100)
@@ -44,8 +45,9 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
     });
   };
 
-  const uniqueRegus = ['Semua Regu', ...new Set(rating.officerRatings.map(officer => officer.regu).filter(Boolean))].sort();
-  const uniqueUnits = ['Semua Unit', ...new Set(rating.kpRatings.map(kp => kp.ulp).filter(Boolean))].sort();
+  const uniqueRegus = ['Semua Regu', ...[...new Set(rating.officerRatings.map(officer => officer.regu).filter(Boolean))].sort()];
+  const uniqueKPRegus = ['Semua Regu', ...[...new Set(rating.kpRatings.map(kp => kp.regu).filter(Boolean))].sort()];
+  const uniqueKPUnits = ['Semua Unit', ...[...new Set(rating.kpRatings.map(kp => kp.ulp).filter(Boolean))].sort()];
 
   const filteredOfficers = selectedRegu === 'Semua Regu' 
     ? rating.officerRatings 
@@ -55,13 +57,11 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
   const startIndex = (currentPage - 1) * rowsPerPage;
   const paginatedData = filteredOfficers.slice(startIndex, startIndex + rowsPerPage);
 
-  const filteredKPs = selectedUnit === 'Semua Unit' 
-    ? rating.kpRatings 
-    : rating.kpRatings.filter(kp => kp.ulp === selectedUnit);
-
-  const totalKPPages = Math.ceil(filteredKPs.length / kpRowsPerPage);
-  const startKPIndex = (currentKPPage - 1) * kpRowsPerPage;
-  const paginatedKPData = filteredKPs.slice(startKPIndex, startKPIndex + kpRowsPerPage);
+  const filteredKPs = rating.kpRatings.filter(kp => {
+    const matchUnit = selectedKPUnit === 'Semua Unit' || kp.ulp === selectedKPUnit;
+    const matchRegu = selectedKPRegu === 'Semua Regu' || kp.regu === selectedKPRegu;
+    return matchUnit && matchRegu;
+  });
 
   return (
     <div className="flex flex-col gap-8 relative px-2 pb-12">
@@ -155,255 +155,241 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
         ))}
       </div>
 
-      <div className="flex flex-col gap-10">
-        <div className="flex flex-col xl:flex-row gap-8 items-stretch">
-          {/* LEFT COLUMN: RINGKASAN DATA ULP (1/3 width) - Stretching to match total height */}
-          <div className="xl:w-80 2xl:w-1/4 3xl:w-1/3 flex flex-col gap-6">
-            <div className="flex items-center gap-3 px-2 shrink-0">
-              <Award size={18} className="text-brand-secondary" />
-              <h3 className="text-sm font-black italic uppercase tracking-widest text-slate-800">RINGKASAN DATA ULP</h3>
+      <div className="flex flex-col lg:flex-row gap-6 items-stretch">
+        {/* COLUMN 1: RINGKASAN DATA ULP (LEFT) - Reduced width */}
+        <div className="lg:w-56 xl:w-64 flex flex-col gap-6">
+          <div className="flex items-center gap-3 px-2 shrink-0">
+            <Award size={18} className="text-brand-secondary" />
+            <h3 className="text-sm font-black italic uppercase tracking-widest text-slate-800">RINGKASAN DATA ULP</h3>
+          </div>
+          <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 max-h-[1200px] scrollbar-thin scrollbar-thumb-gray-200">
+            {rating.ulpRatings.map((ulp, idx) => (
+              <ULPSummaryCard key={idx} ulp={ulp} delay={idx * 0.05} />
+            ))}
+          </div>
+        </div>
+
+        {/* COLUMN 2: RATING PLN MOBILE PER PETUGAS (MIDDLE) - Equal weight */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm flex flex-col h-full">
+            <div className="px-5 py-4 bg-[#1b3d5d] text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-xl text-brand-secondary">
+                  <TrendingUp size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black italic tracking-tighter uppercase leading-none">RATING PER PETUGAS</h3>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 scale-90 origin-right">
+                <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl border border-white/20">
+                  <select 
+                    value={selectedRegu}
+                    onChange={(e) => {
+                      setSelectedRegu(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="bg-transparent text-white text-[9px] font-black uppercase outline-none cursor-pointer"
+                  >
+                    {uniqueRegus.map(regu => (
+                      <option key={regu} value={regu} className="text-brand-primary">{regu}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
-            <div className="flex-1 flex flex-col gap-4">
-              {rating.ulpRatings.map((ulp, idx) => (
-                <ULPSummaryCard key={idx} ulp={ulp} delay={idx * 0.05} />
-              ))}
+            
+            <div className="flex-1 overflow-x-auto overflow-y-auto max-h-[1050px] scrollbar-thin scrollbar-thumb-gray-200">
+              <table className="w-full text-center border-collapse">
+                <thead className="sticky top-0 z-10">
+                  <tr className="text-white text-[9px] font-black uppercase tracking-tight leading-none bg-[#1b3d5d]">
+                    <th rowSpan={2} className="p-0.5 min-w-[140px]">
+                      <div className="bg-[#1b3d5d] py-4 px-4 rounded-xl h-full flex items-center justify-start border border-white/10">PETUGAS</div>
+                    </th>
+                    <th rowSpan={2} className="p-0.5 min-w-[100px]">
+                      <div className="bg-[#1b3d5d] py-4 px-4 rounded-xl h-full flex items-center justify-start border border-white/10">UNIT</div>
+                    </th>
+                    <th colSpan={6} className="p-0.5">
+                      <div className="bg-[#1b3d5d] py-2 rounded-xl border border-white/10">KOMULATIF RATING PELAYANAN</div>
+                    </th>
+                  </tr>
+                  <tr className="text-white text-[8px] font-black uppercase tracking-tight leading-none bg-[#1b3d5d]">
+                    <th className="p-0.5 w-16">
+                      <div className="bg-[#334155] p-2.5 rounded-lg border border-white/10">WO</div>
+                    </th>
+                    <th className="p-0.5 w-14">
+                      <div className="bg-[#059669] p-2.5 rounded-lg border border-white/10">R5</div>
+                    </th>
+                    <th className="p-0.5 w-14">
+                      <div className="bg-[#ca8a04] p-2.5 rounded-lg border border-white/10">R3-4</div>
+                    </th>
+                    <th className="p-0.5 w-14">
+                      <div className="bg-[#dc2626] p-2.5 rounded-lg border border-white/10">R1-2</div>
+                    </th>
+                    <th className="p-0.5 w-14">
+                      <div className="bg-[#111827] p-2.5 rounded-lg border border-white/10 opacity-80">N/R</div>
+                    </th>
+                    <th className="p-0.5 w-16">
+                      <div className="bg-[#2b2b2b] p-2.5 rounded-lg border border-white/10 text-brand-secondary italic">%</div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white">
+                  {paginatedData.length > 0 ? (
+                    paginatedData.map((item, idx) => (
+                      <tr key={idx} className="border-b border-gray-50 text-[10px] font-bold italic text-brand-primary h-12 hover:bg-blue-50/30 transition-colors group">
+                        <td className="px-4 text-left border-r border-gray-50 uppercase tracking-tight group-hover:text-blue-700 font-black truncate max-w-[140px]">{item.name}</td>
+                        <td className="px-4 text-left border-r border-gray-50 uppercase tracking-tight text-gray-400 font-medium truncate max-w-[100px]">{item.ulp}</td>
+                        <td className="px-2 border-r border-gray-50 font-black text-slate-700">{item.totalWoPlnMobile}</td>
+                        <td className="px-2 border-r border-gray-50 text-emerald-600 font-black">{item.rating5}</td>
+                        <td className="px-2 border-r border-gray-50 text-amber-600 font-black">{item.rating34}</td>
+                        <td className="px-2 border-r border-gray-50 text-rose-600 font-black">{item.rating12}</td>
+                        <td className="px-2 border-r border-gray-50 bg-slate-50 text-slate-800 font-medium">{item.noRating}</td>
+                        <td className="p-0">
+                          <div className={`h-full w-full flex items-center justify-center font-black italic text-white text-[10px] ${item.percentageKomulatif === '100%' ? 'bg-emerald-500' : 'bg-rose-600'}`}>
+                            {item.percentageKomulatif}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={8} className="p-20 text-center text-gray-200 font-black italic uppercase text-xs">TIDAK ADA DATA</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="bg-slate-50 px-4 py-3 border-t border-gray-100 flex items-center justify-between shrink-0">
+              <span className="text-[9px] font-black text-slate-400 uppercase italic tracking-widest">
+                {currentPage}/{totalPages}
+              </span>
+              <div className="flex gap-1">
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="p-1.5 rounded-lg border border-gray-200 bg-white text-brand-primary disabled:opacity-20 hover:border-brand-primary transition-all"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="p-1.5 rounded-lg border border-gray-200 bg-white text-brand-primary disabled:opacity-20 hover:border-brand-primary transition-all"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
             </div>
           </div>
+        </div>
 
-          {/* RIGHT COLUMN: TABLES (2/3 width) */}
-          <div className="flex-1 min-w-0 flex flex-col gap-10">
-            {/* TABLE 1: RATING PLN MOBILE PER PETUGAS */}
-            <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm">
-              <div className="px-6 py-5 bg-brand-primary text-white flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="p-2.5 bg-brand-secondary/20 rounded-xl text-brand-secondary">
-                    <TrendingUp size={22} />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black italic tracking-tighter uppercase leading-none">RATING PLN MOBILE PER PETUGAS</h3>
-                    <p className="text-[10px] text-white/50 font-bold uppercase mt-1.5 tracking-wider">Evaluasi Kinerja Individu</p>
-                  </div>
+        {/* COLUMN 3: RATING PER KANTOR PELAYANAN (RIGHT) - Equal weight */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm flex flex-col h-full">
+            <div className="px-5 py-4 bg-[#1b3d5d] text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-xl text-brand-secondary">
+                  <ShieldCheck size={18} />
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl border border-white/20">
-                    <span className="text-[10px] font-black uppercase text-white/60">FILTER REGU:</span>
-                    <select 
-                      value={selectedRegu}
-                      onChange={(e) => {
-                        setSelectedRegu(e.target.value);
-                        setCurrentPage(1);
-                      }}
-                      className="bg-transparent text-white text-[10px] font-black uppercase outline-none cursor-pointer"
-                    >
-                      {uniqueRegus.map(regu => (
-                        <option key={regu} value={regu} className="text-brand-primary">{regu}</option>
-                      ))}
-                    </select>
-                    {selectedRegu !== 'Semua Regu' && (
-                      <button 
-                        onClick={() => {
-                          setSelectedRegu('Semua Regu');
-                          setCurrentPage(1);
-                        }}
-                        className="ml-1 p-1 hover:bg-white/10 rounded-full transition-colors"
-                        title="Reset Filter"
-                      >
-                        <RotateCcw size={12} className="text-brand-secondary" />
-                      </button>
-                    )}
-                  </div>
-                  <div className="hidden sm:flex items-center gap-3 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
-                    <Users size={16} className="text-brand-secondary" />
-                    <span className="text-[11px] font-black uppercase tracking-widest">{filteredOfficers.length} Petugas</span>
-                  </div>
+                <div>
+                  <h3 className="text-sm font-black italic tracking-tighter uppercase leading-none">RATING PER KANTOR PELAYANAN</h3>
                 </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-center border-collapse">
-                  <thead>
-                    <tr className="text-white text-[11px] font-black uppercase tracking-tighter">
-                      <th rowSpan={2} className="bg-[#1b3d5d] py-5 px-6 border-r border-white/5 min-w-[240px] text-left">PETUGAS</th>
-                      <th rowSpan={2} className="bg-[#4472C4] py-5 px-6 border-r border-white/5 min-w-[130px] text-left">UNIT ULP</th>
-                      <th rowSpan={2} className="bg-[#d38c1a] py-5 px-6 border-r border-white/5 min-w-[180px] text-left">REGU</th>
-                      <th colSpan={6} className="bg-[#000080] py-3 border-b border-white/10">KOMULATIF RATING PELAYANAN</th>
-                    </tr>
-                    <tr className="text-white text-[9px] font-black uppercase tracking-tighter">
-                      <th className="bg-[#0000FF] p-3.5 border-r border-white/5 w-28 uppercase">Total WO</th>
-                      <th className="bg-[#00B050] p-3.5 border-r border-white/5 w-28 text-white uppercase font-black tracking-widest">R5</th>
-                      <th className="bg-[#FFFF00] p-3.5 border-r border-white/5 text-black uppercase font-black tracking-widest">R3-4</th>
-                      <th className="bg-[#FF0000] p-3.5 border-r border-white/5 w-28 text-white uppercase font-black tracking-widest">R1-2</th>
-                      <th className="bg-[#212121] p-3.5 border-r border-white/5 w-28 text-white uppercase font-black tracking-widest">NONE</th>
-                      <th className="bg-[#2b2b2b] p-3.5 w-28 text-brand-secondary uppercase italic font-black">% KOM</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white">
-                    {paginatedData.length > 0 ? (
-                      paginatedData.map((item, idx) => (
-                        <tr key={idx} className="border-b border-gray-50 text-xs font-bold italic text-brand-primary h-[56px] hover:bg-blue-50/30 transition-colors group">
-                          <td className="px-6 py-4 text-left border-r border-gray-50 uppercase tracking-tight group-hover:text-blue-700 font-black">{item.name}</td>
-                          <td className="px-6 py-4 text-left border-r border-gray-50 uppercase tracking-tight text-gray-400 font-medium">{item.ulp}</td>
-                          <td className="px-6 py-4 text-left border-r border-gray-50 uppercase tracking-tight text-brand-primary/60">{item.regu}</td>
-                          <td className="px-4 border-r border-gray-50 font-black text-slate-700">{item.totalWoPlnMobile}</td>
-                          <td className="px-4 border-r border-gray-50 text-emerald-600 font-black">{item.rating5}</td>
-                          <td className="px-4 border-r border-gray-50 text-amber-600 font-black">{item.rating34}</td>
-                          <td className="px-4 border-r border-gray-50 text-rose-600 font-black">{item.rating12}</td>
-                          <td className="px-4 border-r border-gray-50 bg-slate-50 text-slate-800 font-medium">{item.noRating}</td>
-                          <td className="p-0">
-                            <div className={`h-full w-full flex items-center justify-center font-black italic text-white text-[11px] shadow-inner ${item.percentageKomulatif === '100%' ? 'bg-emerald-500' : 'bg-rose-600'}`}>
-                              {item.percentageKomulatif}
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={9} className="p-24 text-center text-gray-200 font-black italic uppercase tracking-[0.2em] text-sm">
-                          BELUM ADA DATA
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              
-              <div className="bg-slate-50 px-6 py-5 border-t border-gray-100 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-sm animate-pulse"></div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase italic tracking-widest">
-                    Halaman {currentPage} Dari {totalPages}
-                  </span>
+              <div className="flex flex-wrap items-center gap-1.5 justify-end max-w-[50%]">
+                <div className="flex items-center gap-1.5 bg-white/10 px-2 py-1 rounded-xl border border-white/20">
+                  <span className="text-[8px] font-black uppercase text-white/60 shrink-0">UNIT:</span>
+                  <select 
+                    value={selectedKPUnit}
+                    onChange={(e) => setSelectedKPUnit(e.target.value)}
+                    className="bg-transparent text-white text-[8px] font-black uppercase outline-none cursor-pointer min-w-0"
+                  >
+                    {uniqueKPUnits.map(u => (
+                      <option key={u} value={u} className="text-brand-primary">{u}</option>
+                    ))}
+                  </select>
                 </div>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
-                    className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-brand-primary disabled:opacity-20 hover:border-brand-primary hover:shadow-sm transition-all"
+                <div className="flex items-center gap-1.5 bg-white/10 px-2 py-1 rounded-xl border border-white/20">
+                  <span className="text-[8px] font-black uppercase text-white/60 shrink-0">REGU:</span>
+                  <select 
+                    value={selectedKPRegu}
+                    onChange={(e) => setSelectedKPRegu(e.target.value)}
+                    className="bg-transparent text-white text-[8px] font-black uppercase outline-none cursor-pointer min-w-0"
                   >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <button 
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    disabled={currentPage === totalPages}
-                    className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-brand-primary disabled:opacity-20 hover:border-brand-primary hover:shadow-sm transition-all"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
+                    {uniqueKPRegus.map(r => (
+                      <option key={r} value={r} className="text-brand-primary">{r}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
-
-            {/* TABLE 2: RATING PER KP */}
-            <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm">
-              <div className="px-6 py-5 bg-[#1b3d5d] text-white flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="p-2.5 bg-white/10 rounded-xl text-brand-secondary">
-                    <ShieldCheck size={22} />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black italic tracking-tighter uppercase leading-none">RATING PER KANTOR PELAYANAN</h3>
-                    <p className="text-[10px] text-white/40 font-bold uppercase mt-1.5 tracking-wider">Unit Pelayanan</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl border border-white/20">
-                    <span className="text-[10px] font-black uppercase text-white/60">FILTER UNIT:</span>
-                    <select 
-                      value={selectedUnit}
-                      onChange={(e) => {
-                        setSelectedUnit(e.target.value);
-                        setCurrentKPPage(1);
-                      }}
-                      className="bg-transparent text-white text-[10px] font-black uppercase outline-none cursor-pointer"
-                    >
-                      {uniqueUnits.map(unit => (
-                        <option key={unit} value={unit} className="text-brand-primary">{unit}</option>
-                      ))}
-                    </select>
-                    {selectedUnit !== 'Semua Unit' && (
-                      <button 
-                        onClick={() => {
-                          setSelectedUnit('Semua Unit');
-                          setCurrentKPPage(1);
-                        }}
-                        className="ml-1 p-1 hover:bg-white/10 rounded-full transition-colors"
-                        title="Reset Filter"
-                      >
-                        <RotateCcw size={12} className="text-brand-secondary" />
-                      </button>
-                    )}
-                  </div>
-                  <div className="hidden sm:flex items-center gap-3 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
-                    <ShieldCheck size={16} className="text-brand-secondary" />
-                    <span className="text-[11px] font-black uppercase tracking-widest">{filteredKPs.length} Unit</span>
-                  </div>
-                </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-center border-collapse">
-                  <thead>
-                    <tr className="text-white text-[11px] font-black uppercase tracking-tighter">
-                      <th rowSpan={2} className="bg-[#1e293b] py-5 px-6 border-r border-white/5 min-w-[200px] text-left">KANTOR PELAYANAN</th>
-                      <th rowSpan={2} className="bg-[#b45309] py-5 px-6 border-r border-white/5 min-w-[130px] text-left">ULP</th>
-                      <th colSpan={6} className="bg-[#1e1b4b] py-3 border-b border-white/5">DATA RATING SEUMUR HIDUP</th>
-                    </tr>
-                    <tr className="text-white text-[9px] font-black uppercase tracking-tighter">
-                      <th className="bg-[#1d4ed8] p-4 border-r border-white/5 w-24">TOTAL WO</th>
-                      <th className="bg-[#059669] p-4 border-r border-white/5 w-24 uppercase font-black">R5</th>
-                      <th className="bg-[#ca8a04] p-4 border-r border-white/5 text-white w-24 uppercase font-black">R3-4</th>
-                      <th className="bg-[#dc2626] p-4 border-r border-white/5 w-24 uppercase font-black">R1-2</th>
-                      <th className="bg-[#111827] p-4 border-r border-white/5 w-24 italic opacity-80 uppercase font-black">N/R</th>
-                      <th className="bg-[#334155] p-4 w-24 uppercase font-black">% PERSEN</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white">
-                    {paginatedKPData.length > 0 ? (
-                      paginatedKPData.map((kp, idx) => (
-                        <tr key={idx} className="border-b border-gray-50 text-[10px] font-bold italic text-brand-primary h-[48px] hover:bg-slate-50 transition-colors group">
-                          <td className="px-6 py-3 text-left border-r border-gray-50 uppercase tracking-tight font-black group-hover:text-blue-600">{kp.namaKp}</td>
-                          <td className="px-6 py-3 text-left border-r border-gray-50 uppercase tracking-tight text-slate-400 font-bold">{kp.ulp}</td>
-                          <td className="px-4 border-r border-gray-50 text-slate-600 font-black">{kp.totalWoPlnMobile}</td>
-                          <td className="px-4 border-r border-gray-50 text-emerald-600 font-black">{kp.rating5}</td>
-                          <td className="px-4 border-r border-gray-50 text-amber-600 font-black">{kp.rating34}</td>
-                          <td className="px-4 border-r border-gray-50 text-rose-600 font-black">{kp.rating12}</td>
-                          <td className="px-4 border-r border-gray-50 bg-slate-50/50 text-slate-400">{kp.noRating}</td>
-                          <td className="p-0">
-                            <div className={`h-full w-full flex items-center justify-center font-black text-white ${kp.percentageKomulatif === '100%' ? 'bg-emerald-500 shadow-sm' : 'bg-rose-500'}`}>
-                              {kp.percentageKomulatif}
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={8} className="p-24 text-center text-slate-200 text-sm font-black uppercase italic tracking-widest">
-                          DATA KOSONG
+            
+            <div className="flex-1 overflow-y-auto max-h-[1200px] scrollbar-thin scrollbar-thumb-gray-200">
+              <table className="w-full text-center border-collapse">
+                <thead className="sticky top-0 z-10 bg-[#1b3d5d]">
+                  <tr className="text-white text-[9px] font-black uppercase tracking-tight leading-none bg-[#1b3d5d]">
+                    <th rowSpan={2} className="p-0.5 min-w-[140px]">
+                      <div className="bg-[#1b3d5d] py-4 px-4 rounded-xl h-full flex items-center justify-start border border-white/10 text-left">KANTOR PELAYANAN</div>
+                    </th>
+                    <th rowSpan={2} className="p-0.5 min-w-[100px]">
+                      <div className="bg-[#1b3d5d] py-4 px-4 rounded-xl h-full flex items-center justify-start border border-white/10 text-left">UNIT</div>
+                    </th>
+                    <th colSpan={6} className="p-0.5">
+                      <div className="bg-[#1b3d5d] py-2 rounded-xl border border-white/10">KOMULATIF RATING PELAYANAN</div>
+                    </th>
+                  </tr>
+                  <tr className="text-white text-[8px] font-black uppercase tracking-tight leading-none bg-[#1b3d5d]">
+                    <th className="p-0.5 w-16">
+                      <div className="bg-[#334155] p-2.5 rounded-lg border border-white/10">WO</div>
+                    </th>
+                    <th className="p-0.5 w-14">
+                      <div className="bg-[#059669] p-2.5 rounded-lg border border-white/10">R5</div>
+                    </th>
+                    <th className="p-0.5 w-14">
+                      <div className="bg-[#ca8a04] p-2.5 rounded-lg border border-white/10">R3-4</div>
+                    </th>
+                    <th className="p-0.5 w-14">
+                      <div className="bg-[#dc2626] p-2.5 rounded-lg border border-white/10">R1-2</div>
+                    </th>
+                    <th className="p-0.5 w-14">
+                      <div className="bg-[#111827] p-2.5 rounded-lg border border-white/10 opacity-80">N/R</div>
+                    </th>
+                    <th className="p-0.5 w-16">
+                      <div className="bg-[#2b2b2b] p-2.5 rounded-lg border border-white/10 text-brand-secondary italic">%</div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white">
+                  {filteredKPs.length > 0 ? (
+                    filteredKPs.map((kp, idx) => (
+                      <tr key={idx} className="border-b border-gray-50 text-[10px] font-bold italic text-brand-primary h-12 hover:bg-slate-50 transition-colors group">
+                        <td className="px-4 text-left border-r border-gray-50 uppercase tracking-tight font-black group-hover:text-blue-600 truncate max-w-[140px]">{kp.namaKp}</td>
+                        <td className="px-4 text-left border-r border-gray-50 uppercase tracking-tight text-slate-400 font-bold truncate max-w-[100px]">{kp.ulp}</td>
+                        <td className="px-2 border-r border-gray-50 text-slate-600 font-black">{kp.totalWoPlnMobile}</td>
+                        <td className="px-2 border-r border-gray-50 text-emerald-600 font-black">{kp.rating5}</td>
+                        <td className="px-2 border-r border-gray-50 text-amber-600 font-black">{kp.rating34}</td>
+                        <td className="px-2 border-r border-gray-50 text-rose-600 font-black">{kp.rating12}</td>
+                        <td className="px-2 border-r border-gray-50 bg-slate-50/50 text-slate-400">{kp.noRating}</td>
+                        <td className="p-0 h-12">
+                          <div className={`h-full w-full flex items-center justify-center font-black text-white text-[10px] ${kp.percentageKomulatif === '100%' ? 'bg-emerald-500' : 'bg-rose-500'}`}>
+                            {kp.percentageKomulatif}
+                          </div>
                         </td>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <div className="bg-slate-50 px-6 py-5 border-t border-gray-100 flex items-center justify-between">
-                <span className="text-[10px] font-black text-slate-400 uppercase italic tracking-widest leading-none">
-                  Hal {currentKPPage} / {totalKPPages} ({filteredKPs.length} Unit)
-                </span>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => setCurrentKPPage(prev => Math.max(1, prev - 1))}
-                    disabled={currentKPPage === 1}
-                    className="p-2 rounded-xl border border-gray-200 bg-white text-brand-primary disabled:opacity-30 hover:border-brand-primary transition-all shadow-sm"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <button 
-                    onClick={() => setCurrentKPPage(prev => Math.min(totalKPPages, prev + 1))}
-                    disabled={currentKPPage === totalKPPages}
-                    className="p-2 rounded-xl border border-gray-200 bg-white text-brand-primary disabled:opacity-30 hover:border-brand-primary transition-all shadow-sm"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-              </div>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={8} className="p-20 text-center text-slate-200 text-xs font-black uppercase italic tracking-widest">DATA KOSONG</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="bg-slate-50 px-5 py-3 border-t border-gray-100 flex items-center justify-center shrink-0">
+              <span className="text-[9px] font-black text-slate-400 uppercase italic tracking-widest">
+                TOTAL {filteredKPs.length} KANTOR PELAYANAN
+              </span>
             </div>
           </div>
         </div>

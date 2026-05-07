@@ -84,6 +84,7 @@ export interface ULPRating {
 export interface KPRating {
   namaKp: string;
   ulp: string;
+  regu: string;
   totalWoPlnMobile: number;
   rating5: number;
   rating34: number;

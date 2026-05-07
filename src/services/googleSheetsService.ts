@@ -986,6 +986,7 @@ export class GoogleSheetsService {
           kpRatings.push({
             namaKp: kpName.toUpperCase(),
             ulp: stats.ulp.toUpperCase(),
+            regu: kpName,
             totalWoPlnMobile: stats.totalWo,
             rating5: stats.r5,
             rating34: stats.r34,
