@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Award, TrendingUp, Users, Zap, ShieldCheck, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import { Award, TrendingUp, Users, Zap, ShieldCheck, ChevronLeft, ChevronRight, RotateCcw, PieChart as PieIcon } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { DashboardData } from '../types.ts';
 
 interface RatingPageProps {
@@ -13,7 +14,7 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
   const [currentKPPage, setCurrentKPPage] = useState(1);
   const [selectedRegu, setSelectedRegu] = useState('Semua Regu');
   const [selectedUnit, setSelectedUnit] = useState('Semua Unit');
-  const rowsPerPage = 21;
+  const rowsPerPage = 33;
   const [selectedKPRegu, setSelectedKPRegu] = useState('Semua Regu');
   const [selectedKPUnit, setSelectedKPUnit] = useState('Semua Unit');
 
@@ -272,15 +273,15 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                   {paginatedData.length > 0 ? (
                     paginatedData.map((item, idx) => (
                       <tr key={idx} className="border-b border-gray-50 text-[10px] font-bold italic text-brand-primary hover:bg-blue-50/30 transition-colors group">
-                        <td className="px-4 py-[1.5px] text-left border-r border-gray-50 uppercase tracking-tight group-hover:text-blue-700 font-black truncate max-w-[140px]">{item.name}</td>
-                        <td className="px-4 py-[1.5px] text-left border-r border-gray-50 uppercase tracking-tight text-gray-400 font-medium truncate max-w-[100px]">{item.ulp}</td>
-                        <td className="px-2 py-[1.5px] border-r border-gray-50 font-black text-slate-700">{item.totalWoPlnMobile}</td>
-                        <td className="px-2 py-[1.5px] border-r border-gray-50 text-emerald-600 font-black">{item.rating5}</td>
-                        <td className="px-2 py-[1.5px] border-r border-gray-50 text-amber-600 font-black">{item.rating34}</td>
-                        <td className="px-2 py-[1.5px] border-r border-gray-50 text-rose-600 font-black">{item.rating12}</td>
-                        <td className="px-2 py-[1.5px] border-r border-gray-50 bg-slate-50 text-slate-800 font-medium">{item.noRating}</td>
+                        <td className="px-4 py-[5.2px] text-left border-r border-gray-50 uppercase tracking-tight group-hover:text-blue-700 font-black truncate max-w-[140px]">{item.name}</td>
+                        <td className="px-4 py-[5.2px] text-left border-r border-gray-50 uppercase tracking-tight text-gray-400 font-medium truncate max-w-[100px]">{item.ulp}</td>
+                        <td className="px-2 py-[5.2px] border-r border-gray-50 font-black text-slate-700">{item.totalWoPlnMobile}</td>
+                        <td className="px-2 py-[5.2px] border-r border-gray-50 text-emerald-600 font-black">{item.rating5}</td>
+                        <td className="px-2 py-[5.2px] border-r border-gray-50 text-amber-600 font-black">{item.rating34}</td>
+                        <td className="px-2 py-[5.2px] border-r border-gray-50 text-rose-600 font-black">{item.rating12}</td>
+                        <td className="px-2 py-[5.2px] border-r border-gray-50 bg-slate-50 text-slate-800 font-medium">{item.noRating}</td>
                         <td className="p-0">
-                          <div className={`h-8 w-full flex items-center justify-center font-black italic text-white text-[10px] ${item.percentageKomulatif === '100%' ? 'bg-emerald-500' : 'bg-rose-600'}`}>
+                          <div className={`w-full py-[5.2px] flex items-center justify-center font-black italic text-white text-[10px] ${item.percentageKomulatif === '100%' ? 'bg-emerald-500' : 'bg-rose-600'}`}>
                             {item.percentageKomulatif}
                           </div>
                         </td>
@@ -321,7 +322,7 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
 
         {/* COLUMN 3: RATING PER KANTOR PELAYANAN (RIGHT) - Equal weight */}
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm flex flex-col h-full">
+          <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm flex flex-col">
             <div className="px-5 py-4 bg-gradient-to-r from-[#1b3d5d] to-[#06b6d4] text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-white/10 rounded-xl text-brand-secondary">
@@ -359,7 +360,7 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
               </div>
             </div>
             
-            <div className="flex-1 overflow-y-auto max-h-[1200px] scrollbar-thin scrollbar-thumb-gray-200">
+            <div className="overflow-y-auto max-h-[500px] scrollbar-thin scrollbar-thumb-gray-200">
               <table className="w-full text-center border-collapse">
                 <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#1b3d5d] to-[#06b6d4]">
                   <tr className="text-white text-[9px] font-black uppercase tracking-tight leading-none bg-transparent">
@@ -398,15 +399,15 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                   {filteredKPs.length > 0 ? (
                     filteredKPs.map((kp, idx) => (
                       <tr key={idx} className="border-b border-gray-50 text-[10px] font-bold italic text-brand-primary hover:bg-slate-50 transition-colors group">
-                        <td className="px-4 py-[1.5px] text-left border-r border-gray-50 uppercase tracking-tight font-black group-hover:text-blue-600 truncate max-w-[140px]">{kp.namaKp}</td>
-                        <td className="px-4 py-[1.5px] text-left border-r border-gray-50 uppercase tracking-tight text-slate-400 font-bold truncate max-w-[100px]">{kp.ulp}</td>
-                        <td className="px-2 py-[1.5px] border-r border-gray-50 text-slate-600 font-black">{kp.totalWoPlnMobile}</td>
-                        <td className="px-2 py-[1.5px] border-r border-gray-50 text-emerald-600 font-black">{kp.rating5}</td>
-                        <td className="px-2 py-[1.5px] border-r border-gray-50 text-amber-600 font-black">{kp.rating34}</td>
-                        <td className="px-2 py-[1.5px] border-r border-gray-50 text-rose-600 font-black">{kp.rating12}</td>
-                        <td className="px-2 py-[1.5px] border-r border-gray-50 bg-slate-50/50 text-slate-400">{kp.noRating}</td>
+                        <td className="px-4 py-[1.8px] text-left border-r border-gray-50 uppercase tracking-tight font-black group-hover:text-blue-600 truncate max-w-[140px]">{kp.namaKp}</td>
+                        <td className="px-4 py-[1.8px] text-left border-r border-gray-50 uppercase tracking-tight text-slate-400 font-bold truncate max-w-[100px]">{kp.ulp}</td>
+                        <td className="px-2 py-[1.8px] border-r border-gray-50 text-slate-600 font-black">{kp.totalWoPlnMobile}</td>
+                        <td className="px-2 py-[1.8px] border-r border-gray-50 text-emerald-600 font-black">{kp.rating5}</td>
+                        <td className="px-2 py-[1.8px] border-r border-gray-50 text-amber-600 font-black">{kp.rating34}</td>
+                        <td className="px-2 py-[1.8px] border-r border-gray-50 text-rose-600 font-black">{kp.rating12}</td>
+                        <td className="px-2 py-[1.8px] border-r border-gray-50 bg-slate-50/50 text-slate-400">{kp.noRating}</td>
                         <td className="p-0">
-                          <div className={`h-8 w-full flex items-center justify-center font-black text-white text-[10px] ${kp.percentageKomulatif === '100%' ? 'bg-emerald-500' : 'bg-rose-500'}`}>
+                          <div className={`w-full py-[1.8px] flex items-center justify-center font-black text-white text-[10px] ${kp.percentageKomulatif === '100%' ? 'bg-emerald-500' : 'bg-rose-500'}`}>
                             {kp.percentageKomulatif}
                           </div>
                         </td>
@@ -424,6 +425,93 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
               <span className="text-[9px] font-black text-slate-400 uppercase italic tracking-widest">
                 TOTAL {filteredKPs.length} KANTOR PELAYANAN
               </span>
+            </div>
+          </div>
+
+          {/* NEWSECTION: PIE CHART PERSENTASE PER UNIT */}
+          <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm flex flex-col mt-4 flex-1">
+            <div className="px-5 py-3 bg-gradient-to-r from-[#1b3d5d] to-[#06b6d4] text-white flex items-center gap-3 shrink-0">
+              <div className="p-2 bg-white/10 rounded-xl text-brand-secondary">
+                <PieIcon size={18} />
+              </div>
+              <h3 className="text-sm font-black italic tracking-tighter uppercase leading-none">PERSENTASE WO PER UNIT (ULP)</h3>
+            </div>
+            <div className="flex-1 p-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={rating.ulpRatings.map(ulp => ({
+                      name: ulp.namaUlp,
+                      value: ulp.totalWoPlnMobile
+                    }))}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={0}
+                    outerRadius="80%"
+                    paddingAngle={2}
+                    dataKey="value"
+                    label={({ name, percent, cx, cy, midAngle, outerRadius }: any) => {
+                      const RADIAN = Math.PI / 180;
+                      // Determine if label is on the left or right
+                      const isRight = Math.cos(-midAngle * RADIAN) > 0;
+                      // Adjust position slightly outside the pie
+                      const radius = typeof outerRadius === 'string' ? 60 : outerRadius + 5;
+                      const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                      const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                      
+                      return (
+                        <text 
+                          x={x} 
+                          y={y} 
+                          fill="#475569" 
+                          textAnchor={isRight ? 'start' : 'end'} 
+                          dominantBaseline="central"
+                          className="text-[7.5px] font-black uppercase tracking-tighter"
+                        >
+                          {`${name} ${(percent * 100).toFixed(0)}%`}
+                        </text>
+                      );
+                    }}
+                    labelLine={true}
+                  >
+                    {rating.ulpRatings.map((_, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={[
+                          '#3b82f6', // blue
+                          '#10b981', // emerald
+                          '#f59e0b', // amber
+                          '#ef4444', // red
+                          '#8b5cf6', // violet
+                          '#ec4899', // pink
+                          '#06b6d4', // cyan
+                        ][index % 7]} 
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: '#fff', 
+                      borderRadius: '12px', 
+                      border: 'none', 
+                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                      fontSize: '10px',
+                      fontWeight: 'bold',
+                      textTransform: 'uppercase'
+                    }} 
+                  />
+                  <Legend 
+                    verticalAlign="bottom" 
+                    height={36} 
+                    wrapperStyle={{ 
+                      fontSize: '9px', 
+                      fontWeight: '900', 
+                      textTransform: 'uppercase',
+                      marginTop: '20px'
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>

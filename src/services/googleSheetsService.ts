@@ -41,7 +41,6 @@ export class GoogleSheetsService {
         const response = await fetch(url, { cache: 'no-store' });
 
         if (!response.ok) {
-          console.warn(`Endpoint ${url} returned status ${response.status}`);
           continue;
         }
         
@@ -49,7 +48,6 @@ export class GoogleSheetsService {
         
         // If we get HTML, it means we're likely being redirected to a login page or error page
         if (!csvText || csvText.trim().startsWith('<!DOCTYPE html>') || csvText.includes('<html') || csvText.includes('google-signin')) {
-          console.warn(`Endpoint ${url} returned HTML/Login page instead of CSV. This usually means the sheet is not "Published to the Web" or the ID is incorrect.`);
           continue;
         }
 
@@ -61,7 +59,6 @@ export class GoogleSheetsService {
               if (results.data && results.data.length > 0) {
                 resolve(results.data as any[][]);
               } else {
-                console.warn(`Endpoint ${url} returned empty data.`);
                 resolve([]);
               }
             },
@@ -69,16 +66,10 @@ export class GoogleSheetsService {
           });
         });
       } catch (error) {
-        console.warn(`Error fetching from ${url}:`, error);
+        // Silent error
       }
     }
 
-    console.error(`All fetch attempts failed for sheet: ${sheetName}. 
-      1. Open your Google Sheet
-      2. Go to File > Share > Publish to web
-      3. Select "Entire Document" or "${sheetName}" and "Comma-separated values (.csv)"
-      4. Click Publish
-      5. Ensure SPREADSHEET_ID "${this.SPREADSHEET_ID}" is correct.`);
     return [];
   }
 

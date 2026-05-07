@@ -76,7 +76,7 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
               </table>
             </div>
             <div className="px-6 py-3 bg-gray-50/50 border-t border-gray-100 flex justify-end items-center text-[10px] text-gray-400 font-bold gap-4">
-               <span className="uppercase tracking-widest">PAGINATION: 1 - {data.woOverSlaRptList.length} ITEMS</span>
+               <span className="uppercase tracking-widest">MENAMPILKAN {data.woOverSlaRptList.length} DATA</span>
                <div className="flex gap-2">
                  <button className="hover:text-brand-primary transition-colors"><ChevronLeft size={14}/></button>
                  <button className="hover:text-brand-primary transition-colors"><ChevronRight size={14}/></button>

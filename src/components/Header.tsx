@@ -50,7 +50,6 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange }) => {
           <span className="text-[10px] font-bold text-green-400 flex items-center gap-1">
             <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" /> SISTEM AKTIF
           </span>
-          <span className="text-[9px] opacity-60 uppercase">NODE: BPLN ES BKT</span>
         </div>
         <div className="w-10 h-10 bg-gray-700 rounded-full overflow-hidden border-2 border-brand-accent">
           <img src="https://picsum.photos/seed/admin/100/100" alt="Admin" referrerPolicy="no-referrer" />
