@@ -524,6 +524,18 @@ export class GoogleSheetsService {
           existing.durasiWo = durasiWo;
           if (woDurasiWoIdx !== -1) existing.rawRow[woDurasiWoIdx] = durasiWo;
         }
+        // Prefer row with rating if existing doesn't have one
+        if (existing.rating === null && ratingVal !== null) {
+          existing.rating = ratingVal;
+          existing.ratingStr = ratingStr;
+          if (woRatingIdx !== -1) existing.rawRow[woRatingIdx] = ratingStr;
+        }
+        // Prefer PLN Mobile source if existing is something else
+        if (!existing.isPlnMobile && isPlnMobile) {
+          existing.isPlnMobile = true;
+          existing.source = sourceRaw;
+          if (woSourceIdx !== -1) existing.rawRow[woSourceIdx] = sourceRaw;
+        }
       } else {
         uniqueWoMap.set(reportId, {
           id: reportId,
