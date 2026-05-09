@@ -439,6 +439,38 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
             <div className="flex-1 p-4">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
+                  <defs>
+                    {['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'].map((color, index) => (
+                      <linearGradient key={`grad-${index}`} id={`grad-${index}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={color} stopOpacity={1}/>
+                        <stop offset="95%" stopColor={['#1d4ed8', '#047857', '#b45309', '#b91c1c', '#6d28d9', '#be185d', '#0e7490'][index]} stopOpacity={1}/>
+                      </linearGradient>
+                    ))}
+                  </defs>
+                  {/* Shadow layer for 3D effect */}
+                  <Pie
+                    data={rating.ulpRatings.map(ulp => ({
+                      name: ulp.namaUlp,
+                      value: ulp.totalWoPlnMobile
+                    }))}
+                    cx="50%"
+                    cy="53%"
+                    innerRadius={0}
+                    outerRadius="80%"
+                    paddingAngle={2}
+                    dataKey="value"
+                    stroke="none"
+                    isAnimationActive={false}
+                    legendType="none"
+                  >
+                    {rating.ulpRatings.map((_, index) => (
+                      <Cell 
+                        key={`cell-shadow-${index}`} 
+                        fill={['#1e3a8a', '#064e3b', '#78350f', '#7f1d1d', '#4c1d95', '#831843', '#164e63'][index % 7]} 
+                      />
+                    ))}
+                  </Pie>
+                  {/* Main layer */}
                   <Pie
                     data={rating.ulpRatings.map(ulp => ({
                       name: ulp.namaUlp,
@@ -452,10 +484,8 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                     dataKey="value"
                     label={({ name, percent, cx, cy, midAngle, outerRadius }: any) => {
                       const RADIAN = Math.PI / 180;
-                      // Determine if label is on the left or right
                       const isRight = Math.cos(-midAngle * RADIAN) > 0;
-                      // Adjust position slightly outside the pie
-                      const radius = typeof outerRadius === 'string' ? 60 : outerRadius + 5;
+                      const radius = typeof outerRadius === 'string' ? 60 : outerRadius + 10;
                       const x = cx + radius * Math.cos(-midAngle * RADIAN);
                       const y = cy + radius * Math.sin(-midAngle * RADIAN);
                       
@@ -463,51 +493,47 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                         <text 
                           x={x} 
                           y={y} 
-                          fill="#475569" 
+                          fill="#1e293b" 
                           textAnchor={isRight ? 'start' : 'end'} 
                           dominantBaseline="central"
-                          className="text-[7.5px] font-black uppercase tracking-tighter"
+                          className="text-[8px] font-black uppercase tracking-tighter"
                         >
                           {`${name} ${(percent * 100).toFixed(0)}%`}
                         </text>
                       );
                     }}
-                    labelLine={true}
+                    labelLine={{ stroke: '#64748b', strokeWidth: 1 }}
                   >
                     {rating.ulpRatings.map((_, index) => (
                       <Cell 
                         key={`cell-${index}`} 
-                        fill={[
-                          '#3b82f6', // blue
-                          '#10b981', // emerald
-                          '#f59e0b', // amber
-                          '#ef4444', // red
-                          '#8b5cf6', // violet
-                          '#ec4899', // pink
-                          '#06b6d4', // cyan
-                        ][index % 7]} 
+                        fill={`url(#grad-${index % 7})`}
+                        stroke="#fff"
+                        strokeWidth={1}
                       />
                     ))}
                   </Pie>
                   <Tooltip 
                     contentStyle={{ 
-                      backgroundColor: '#fff', 
+                      backgroundColor: 'rgba(255, 255, 255, 0.96)', 
                       borderRadius: '12px', 
-                      border: 'none', 
+                      border: '1px solid #e2e8f0', 
                       boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-                      fontSize: '10px',
-                      fontWeight: 'bold',
+                      fontSize: '11px',
+                      fontWeight: '800',
                       textTransform: 'uppercase'
                     }} 
                   />
                   <Legend 
                     verticalAlign="bottom" 
                     height={36} 
+                    iconType="circle"
                     wrapperStyle={{ 
-                      fontSize: '9px', 
+                      fontSize: '10px', 
                       fontWeight: '900', 
                       textTransform: 'uppercase',
-                      marginTop: '20px'
+                      marginTop: '30px',
+                      paddingTop: '10px'
                     }}
                   />
                 </PieChart>
