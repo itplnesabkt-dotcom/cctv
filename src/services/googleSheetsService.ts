@@ -253,6 +253,17 @@ export class GoogleSheetsService {
       return ALLOWED_REGUS.includes(normalized);
     };
 
+    const standardizeUlpName = (name: string) => {
+      if (!name) return "";
+      return name.toUpperCase()
+        .replace(/^POSKO ULP\s+/i, "")
+        .replace(/^ULP\s+/i, "")
+        .replace(/^POSKO\s+/i, "")
+        .trim();
+    };
+
+    const allRegusInUlp = new Map<string, string>(); // Regu -> ULP
+
     const now = Date.now();
     let woRows: any[][], poRows: any[][], petugasRows: any[][], ulpRows: any[][], poskoRows: any[][], ratingRows: any[][];
 
@@ -387,71 +398,10 @@ export class GoogleSheetsService {
 
     const woDataStart = woHeaderIdx !== -1 ? woHeaderIdx + 1 : 0;
     
-    const globalWoReports = new Map<string, boolean>();
-    const officerWoReports = new Map<string, Map<string, boolean>>();
-    const ulpWoReports = new Map<string, Map<string, boolean>>();
-    const officerWoRawStats = new Map<string, { total: number; cctv: number }>();
-    
-    // Rating aggregation maps
-    const officerRatingStats = new Map<string, { 
-      totalWo: number; 
-      r5: number; 
-      r34: number; 
-      r12: number; 
-      noR: number;
-      regu: string;
-      ulp: string;
-      displayName: string;
-    }>();
-
-    const kpRatingStats = new Map<string, { 
-      totalWo: number; 
-      r5: number; 
-      r34: number; 
-      r12: number; 
-      noR: number;
-      ulp: string;
-    }>();
-
-    const filteredWoRows: any[][] = [];
-    const allPoskosSet = new Set<string>();
-
-    let highestRpt = 0, highestRct = 0, totalRpt = 0, totalRct = 0, rptCount = 0, rctCount = 0;
-    const woOverSlaRptList: any[][] = [];
-    const shiftMap = new Map<string, number>();
-    const officerRptOverSla = new Map<string, number>();
-    const officerRctOverSla = new Map<string, number>();
-    const ulpMapDistribution = new Map<string, number>();
-    const processedGlobalWoIds = new Set<string>();
-    const rptOver30Ids = new Set<string>();
-    const rptOver45Ids = new Set<string>();
-
-    let totalRatingWo = 0;
-    let totalRating5 = 0;
-    let totalRating34 = 0;
-    let totalRating12 = 0;
-    let totalNoRating = 0;
-
-    const totalWoPlnMobileList: any[][] = [];
-    const rating5List: any[][] = [];
-    const rating34List: any[][] = [];
-    const rating12List: any[][] = [];
-    const noRatingList: any[][] = [];
-
-    const standardizeUlpName = (name: string) => {
-      return name.toUpperCase()
-        .replace(/^POSKO ULP\s+/i, "")
-        .replace(/^ULP\s+/i, "")
-        .replace(/^POSKO\s+/i, "")
-        .trim();
-    };
-
-    const allRegusInUlp = new Map<string, string>(); // Regu -> ULP
     if (woReguIdx !== -1) {
       woRows.slice(woDataStart).forEach(row => {
         const regu = String(row[woReguIdx] || "").trim();
         if (regu && regu !== "Unknown" && regu.toLowerCase() !== "nama regu") {
-          // Determine ULP for this regu to allow filtering
           let rUlp = "Unknown";
           if (woUlpIdx !== -1 && woUlpIdx < row.length) {
             rUlp = standardizeUlpName(String(row[woUlpIdx] || ""));
@@ -463,7 +413,6 @@ export class GoogleSheetsService {
             const uId = poskoToUlpIdMap.get(pName);
             rUlp = uId ? standardizeUlpName(ulpMap.get(uId) || "") : "Unknown";
           }
-          
           if (!allRegusInUlp.has(regu) || (allRegusInUlp.get(regu) === "Unknown" && rUlp !== "Unknown")) {
             allRegusInUlp.set(regu, rUlp);
           }
@@ -471,22 +420,34 @@ export class GoogleSheetsService {
       });
     }
 
-    // Initialize KP STATS with all regus matching the ULP filter
-    const targetUlp = selectedUlp && selectedUlp !== "ALL" ? standardizeUlpName(selectedUlp) : null;
-    allRegusInUlp.forEach((uName, rName) => {
-      const standardizedRUlp = standardizeUlpName(uName);
-      const isWithinUlp = !targetUlp || standardizedRUlp === targetUlp;
-      if (isWithinUlp) {
-        kpRatingStats.set(rName, { 
-          totalWo: 0, r5: 0, r34: 0, r12: 0, noR: 0, 
-          ulp: uName 
-        });
-      }
-    });
+    // Aggregator for unique reports
+    const uniqueWoMap = new Map<string, {
+      id: string;
+      rpt: number;
+      rct: number;
+      isCctv: boolean;
+      name: string;
+      ulp: string;
+      posko: string;
+      date: Date | null;
+      dateRaw: string;
+      shift: string;
+      source: string;
+      rating: number | null;
+      ratingStr: string;
+      durasiWo: number;
+      regu: string;
+      isPlnMobile: boolean;
+      isWithinUlp: boolean;
+      rawRow: any[];
+    }>();
 
     woRows.slice(woDataStart).forEach((row) => {
       if (!row || row.length < 3) return;
       
+      const reportId = String(row[woIdIdx] || row[13] || "").trim().toUpperCase();
+      if (!reportId) return;
+
       const rowDateRaw = woDateIdx !== -1 && woDateIdx < row.length ? String(row[woDateIdx] || "").trim() : "";
       const rowDate = this.parseSheetDate(rowDateRaw);
       if (!isWithinRange(rowDate)) return;
@@ -497,213 +458,222 @@ export class GoogleSheetsService {
       const woPoskoValue = woPoskoIdx !== -1 && woPoskoIdx < row.length ? String(row[woPoskoIdx] || "").trim() : "";
       const normalizedPosko = this.normalizeForMatch(woPoskoValue);
       const poskoidFromMapping = poskoToUlpIdMap.get(normalizedPosko);
-      
       const poskoidRaw = woPoskoidIdx !== -1 && woPoskoidIdx < row.length ? String(row[woPoskoidIdx] || "").trim() : "";
       const finalPoskoid = poskoidFromMapping || poskoidRaw;
       
       let ulpNameLookup = finalPoskoid ? ulpMap.get(finalPoskoid) : "";
-      if (ulpNameLookup) {
-        ulpNameLookup = standardizeUlpName(ulpNameLookup);
-      }
+      if (ulpNameLookup) ulpNameLookup = standardizeUlpName(ulpNameLookup);
       
-      let ulpNameFromWo = (woUlpIdx !== -1 && woUlpIdx < row.length && row[woUlpIdx]) 
+      const ulpNameFromWo = (woUlpIdx !== -1 && woUlpIdx < row.length && row[woUlpIdx]) 
         ? standardizeUlpName(String(row[woUlpIdx]))
         : "";
 
-      let ulpName = (nameKey ? officerToUlp.get(nameKey) : "") || ulpNameLookup || ulpNameFromWo || "Unknown";
-      let poskoName = woPoskoValue || ulpName;
+      const officerUlp = nameKey ? officerToUlp.get(nameKey) : "";
+      const ulpName = officerUlp || ulpNameLookup || ulpNameFromWo || "Unknown";
+      const poskoName = woPoskoValue || ulpName;
 
-      const displayPoskoName = poskoName.toUpperCase().trim();
-      const standardizedDisplayPosko = standardizeUlpName(displayPoskoName);
-      if (displayPoskoName) allPoskosSet.add(displayPoskoName);
+      const standardizedDisplayUlp = standardizeUlpName(ulpName);
+      const standardizedDisplayPosko = standardizeUlpName(poskoName);
       
-      const displayUlpName = ulpName.toUpperCase().trim();
-      const standardizedDisplayUlp = standardizeUlpName(displayUlpName);
-
-      const targetUlp = selectedUlp && selectedUlp !== "ALL" ? standardizeUlpName(selectedUlp) : null;
-      const isWithinUlp = !targetUlp || standardizedDisplayUlp === targetUlp || standardizedDisplayPosko === targetUlp;
-
-      const reguValue = woReguIdx !== -1 && woReguIdx < row.length ? String(row[woReguIdx] || "").trim() : "";
-      const isUp3 = isUp3Regu(reguValue);
-
-      // SUMMARY STATS: Process regardless of whether the officer name is known
-      if (isWithinUlp) {
-        const sourceRaw = woSourceIdx !== -1 && woSourceIdx < row.length ? String(row[woSourceIdx] || "").trim().toUpperCase() : "";
-        const isPlnMobile = sourceRaw === "PLN MOBILE";
-        const ratingStr = woRatingIdx !== -1 && woRatingIdx < row.length ? String(row[woRatingIdx] || "").trim() : "";
-        const ratingVal = ratingStr === "" || isNaN(parseInt(ratingStr)) ? null : parseInt(ratingStr);
-
-        if (isPlnMobile) {
-          totalRatingWo++;
-          const rowDetail = [
-            woIdIdx !== -1 && woIdIdx < row.length ? String(row[woIdIdx] || "") : "-",
-            rowDateRaw || "-",
-            nameRaw || "-",
-            ulpName || "-",
-            ratingStr || "-",
-            sourceRaw || "-"
-          ];
-          totalWoPlnMobileList.push(rowDetail);
-          
-          if (ratingVal === null || ratingStr === "") {
-            totalNoRating++;
-            noRatingList.push(rowDetail);
-          } else if (ratingVal === 5) {
-            totalRating5++;
-            rating5List.push(rowDetail);
-          } else if (ratingVal === 4 || ratingVal === 3) {
-            totalRating34++;
-            rating34List.push(rowDetail);
-          } else if (ratingVal === 2 || ratingVal === 1) {
-            totalRating12++;
-            rating12List.push(rowDetail);
-          }
-        }
-
-        // KP STATS AGGREGATION
-        const reguValue = woReguIdx !== -1 && woReguIdx < row.length ? String(row[woReguIdx] || "").trim() : "";
-        const kpKey = reguValue || "Unknown";
-        if (kpKey !== "Unknown") {
-          const kStats = kpRatingStats.get(kpKey) || { 
-            totalWo: 0, r5: 0, r34: 0, r12: 0, noR: 0, 
-            ulp: ulpName
-          };
-          if (isPlnMobile) {
-            kStats.totalWo++;
-            if (ratingVal === null || ratingStr === "") {
-              kStats.noR++;
-            } else if (ratingVal === 5) {
-              kStats.r5++;
-            } else if (ratingVal === 4 || ratingVal === 3) {
-              kStats.r34++;
-            } else if (ratingVal === 2 || ratingVal === 1) {
-              kStats.r12++;
-            }
-          }
-          if (ulpName && (kStats.ulp === "" || kStats.ulp === "Unknown")) kStats.ulp = ulpName;
-          kpRatingStats.set(kpKey, kStats);
-        }
-      }
-
-      // PER-OFFICER STATS: Require a valid name
-      if (!nameKey || nameKey === "NAMAPETUGAS" || nameKey === "NAME") return;
-
-      if (isWithinUlp) {
-        const reguValue = woReguIdx !== -1 && woReguIdx < row.length ? String(row[woReguIdx] || "").trim() : "";
-        const sourceRaw = woSourceIdx !== -1 && woSourceIdx < row.length ? String(row[woSourceIdx] || "").trim().toUpperCase() : "";
-        const isPlnMobile = sourceRaw === "PLN MOBILE";
-        const ratingStr = woRatingIdx !== -1 && woRatingIdx < row.length ? String(row[woRatingIdx] || "").trim() : "";
-        const ratingVal = ratingStr === "" || isNaN(parseInt(ratingStr)) ? null : parseInt(ratingStr);
-
-        const rStats = officerRatingStats.get(nameKey) || { 
-          totalWo: 0, r5: 0, r34: 0, r12: 0, noR: 0, 
-          regu: reguValue,
-          ulp: ulpName,
-          displayName: nameRaw
-        };
-        if (isPlnMobile) {
-          rStats.totalWo++;
-          
-          if (ratingVal === null || ratingStr === "") {
-            rStats.noR++;
-          } else if (ratingVal === 5) {
-            rStats.r5++;
-          } else if (ratingVal === 4 || ratingVal === 3) {
-            rStats.r34++;
-          } else if (ratingVal === 2 || ratingVal === 1) {
-            rStats.r12++;
-          }
-        }
-        if (reguValue && (rStats.regu === "" || rStats.regu === "Unknown")) rStats.regu = reguValue;
-        if (ulpName && (rStats.ulp === "" || rStats.ulp === "Unknown")) rStats.ulp = ulpName;
-        officerRatingStats.set(nameKey, rStats);
-      }
-
-      const reportId = String(row[woIdIdx] || row[13] || "").trim().toUpperCase(); // Prefer detect, fallback to N (13)
-      if (!reportId) return;
+      const targetUlpFilter = selectedUlp && selectedUlp !== "ALL" ? standardizeUlpName(selectedUlp) : null;
+      const isWithinUlp = !targetUlpFilter || standardizedDisplayUlp === targetUlpFilter || standardizedDisplayPosko === targetUlpFilter;
 
       const cctvVal = row.length > woCctvIdx ? String(row[woCctvIdx] || "").trim().toUpperCase() : "";
       const isCctv = cctvVal.includes("CCTV");
-
-      // ... existing SLA calculations ...
-      const tglLapor = rowDate;
-      const tglPengerjaan = woTglPengerjaanIdx !== -1 ? this.parseSheetDate(row[woTglPengerjaanIdx]) : null;
-      const tglSelesai = woTglSelesaiIdx !== -1 ? this.parseSheetDate(row[woTglSelesaiIdx]) : null;
 
       let rpt = -1;
       if (woRptIdx !== -1 && row[woRptIdx]) {
         const val = parseFloat(String(row[woRptIdx]).replace(",", "."));
         if (!isNaN(val)) rpt = val;
       }
-      if (rpt === -1 && tglLapor && tglPengerjaan) rpt = (tglPengerjaan.getTime() - tglLapor.getTime()) / 60000;
 
       let rctVal = -1;
       if (woRctIdx !== -1 && row[woRctIdx]) {
         const val = parseFloat(String(row[woRctIdx]).replace(",", "."));
         if (!isNaN(val)) rctVal = val;
       }
-      if (rctVal === -1 && tglLapor && tglSelesai) rctVal = (tglSelesai.getTime() - tglLapor.getTime()) / 60000;
 
-      if (isWithinUlp && rpt >= 30) {
-        let durasiWo = rpt;
-        if (woDurasiWoIdx !== -1 && row[woDurasiWoIdx]) {
-          const val = parseFloat(String(row[woDurasiWoIdx]).replace(",", "."));
-          if (!isNaN(val)) durasiWo = val;
-        }
-        woOverSlaRptList.push([reportId, tglLapor!.toLocaleString('id-ID'), nameRaw, Math.round(rpt * 100) / 100, rctVal >= 0 ? Math.round(rctVal * 100) / 100 : '-', durasiWo]);
+      const sourceRaw = woSourceIdx !== -1 && woSourceIdx < row.length ? String(row[woSourceIdx] || "").trim().toUpperCase() : "";
+      const isPlnMobile = sourceRaw === "PLN MOBILE";
+      const ratingStr = woRatingIdx !== -1 && woRatingIdx < row.length ? String(row[woRatingIdx] || "").trim() : "";
+      const ratingVal = ratingStr === "" || isNaN(parseInt(ratingStr)) ? null : parseInt(ratingStr);
+      
+      let durasiWo = rpt;
+      if (woDurasiWoIdx !== -1 && row[woDurasiWoIdx]) {
+        const val = parseFloat(String(row[woDurasiWoIdx]).replace(",", "."));
+        if (!isNaN(val)) durasiWo = val;
       }
 
-      if (isWithinUlp) {
-        if (rpt >= 30) {
-          officerRptOverSla.set(nameRaw, (officerRptOverSla.get(nameRaw) || 0) + 1);
-        }
-        if (rctVal >= 45) {
-          officerRctOverSla.set(nameRaw, (officerRctOverSla.get(nameRaw) || 0) + 1);
-        }
-      }
+      const reguValue = woReguIdx !== -1 && woReguIdx < row.length ? String(row[woReguIdx] || "").trim() : "";
 
-      if (isWithinUlp && !processedGlobalWoIds.has(reportId)) {
-        processedGlobalWoIds.add(reportId);
-        if (rpt > 30) rptOver30Ids.add(reportId);
-        if (rpt > 45) rptOver45Ids.add(reportId);
-        if (rpt >= 0) {
-          if (rpt > highestRpt) highestRpt = rpt;
-          totalRpt += rpt;
-          rptCount++;
-          if (rpt >= 30) {
-            ulpMapDistribution.set(displayUlpName, (ulpMapDistribution.get(displayUlpName) || 0) + 1);
+      const existing = uniqueWoMap.get(reportId);
+      if (existing) {
+        if (rpt > existing.rpt) {
+          existing.rpt = rpt;
+          if (woRptIdx !== -1) existing.rawRow[woRptIdx] = rpt;
+        }
+        if (rctVal > existing.rct) {
+          existing.rct = rctVal;
+          if (woRctIdx !== -1) existing.rawRow[woRctIdx] = rctVal;
+        }
+        if (isCctv) {
+          existing.isCctv = true;
+          if (woCctvIdx !== -1) existing.rawRow[woCctvIdx] = "CCTV";
+        }
+        if (durasiWo > existing.durasiWo) {
+          existing.durasiWo = durasiWo;
+          if (woDurasiWoIdx !== -1) existing.rawRow[woDurasiWoIdx] = durasiWo;
+        }
+      } else {
+        uniqueWoMap.set(reportId, {
+          id: reportId,
+          rpt,
+          rct: rctVal,
+          isCctv,
+          name: nameRaw,
+          ulp: ulpName,
+          posko: poskoName,
+          date: rowDate,
+          dateRaw: rowDateRaw,
+          shift: String(row[woShiftIdx] || 'null').toUpperCase().trim(),
+          source: sourceRaw,
+          rating: ratingVal,
+          ratingStr,
+          durasiWo,
+          regu: reguValue,
+          isPlnMobile,
+          isWithinUlp,
+          rawRow: [...row]
+        });
+      }
+    });
+
+    const globalWoReports = new Map<string, boolean>();
+    const ulpWoReports = new Map<string, Map<string, boolean>>();
+    const officerWoRawStats = new Map<string, { total: number; cctv: number }>();
+    const officerRatingStats = new Map<string, { totalWo: number; r5: number; r34: number; r12: number; noR: number; regu: string; ulp: string; displayName: string; }>();
+    const kpRatingStats = new Map<string, { totalWo: number; r5: number; r34: number; r12: number; noR: number; ulp: string; }>();
+
+    const filteredWoRows: any[][] = [];
+    const allPoskosSet = new Set<string>();
+
+    let highestRpt = 0, highestRct = 0, totalRpt = 0, totalRct = 0, rptCount = 0, rctCount = 0;
+    const woOverSlaRptList: any[][] = [];
+    const shiftMap = new Map<string, number>();
+    const officerRptOverSla = new Map<string, number>();
+    const officerRctOverSla = new Map<string, number>();
+    const rptOver30Ids = new Set<string>();
+    const rptOver45Ids = new Set<string>();
+
+    let totalRatingWo = 0, totalRating5 = 0, totalRating34 = 0, totalRating12 = 0, totalNoRating = 0;
+    const totalWoPlnMobileList: any[][] = [];
+    const rating5List: any[][] = [];
+    const rating34List: any[][] = [];
+    const rating12List: any[][] = [];
+    const noRatingList: any[][] = [];
+
+    // Pre-populate KP STATS with all regus
+    allRegusInUlp.forEach((uName, rName) => {
+      const standardizedRUlp = standardizeUlpName(uName);
+      const targetUlpFilter = selectedUlp && selectedUlp !== "ALL" ? standardizeUlpName(selectedUlp) : null;
+      if (!targetUlpFilter || standardizedRUlp === targetUlpFilter) {
+        kpRatingStats.set(rName, { totalWo: 0, r5: 0, r34: 0, r12: 0, noR: 0, ulp: uName });
+      }
+    });
+
+    // Process Unique WO Data for stats
+    uniqueWoMap.forEach((wo) => {
+      if (wo.posko) allPoskosSet.add(wo.posko.toUpperCase().trim());
+      
+      const standardizedDisplayUlp = standardizeUlpName(wo.ulp);
+      const isUp3 = isUp3Regu(wo.regu);
+
+      if (wo.isWithinUlp) {
+        if (wo.isPlnMobile) {
+          totalRatingWo++;
+          const rowDetail = [wo.id, wo.dateRaw || "-", wo.name || "-", wo.ulp || "-", wo.ratingStr || "-", wo.source || "-"];
+          totalWoPlnMobileList.push(rowDetail);
+          if (wo.rating === null || wo.ratingStr === "") { totalNoRating++; noRatingList.push(rowDetail); }
+          else if (wo.rating === 5) { totalRating5++; rating5List.push(rowDetail); }
+          else if (wo.rating === 4 || wo.rating === 3) { totalRating34++; rating34List.push(rowDetail); }
+          else if (wo.rating === 2 || wo.rating === 1) { totalRating12++; rating12List.push(rowDetail); }
+        }
+
+        const kpKey = wo.regu || "Unknown";
+        if (kpKey !== "Unknown") {
+          const kStats = kpRatingStats.get(kpKey) || { totalWo: 0, r5: 0, r34: 0, r12: 0, noR: 0, ulp: wo.ulp };
+          if (wo.isPlnMobile) {
+            kStats.totalWo++;
+            if (wo.rating === null || wo.ratingStr === "") kStats.noR++;
+            else if (wo.rating === 5) kStats.r5++;
+            else if (wo.rating === 4 || wo.rating === 3) kStats.r34++;
+            else if (wo.rating === 2 || wo.rating === 1) kStats.r12++;
           }
+          if (wo.ulp && (kStats.ulp === "" || kStats.ulp === "Unknown")) kStats.ulp = wo.ulp;
+          kpRatingStats.set(kpKey, kStats);
         }
-        if (rctVal >= 0) {
-          if (rctVal > highestRct) highestRct = rctVal;
-          totalRct += rctVal;
+
+        const nameKey = this.cleanName(wo.name);
+        if (nameKey && nameKey !== "NAMAPETUGAS" && nameKey !== "NAME") {
+          const rStats = officerRatingStats.get(nameKey) || { totalWo: 0, r5: 0, r34: 0, r12: 0, noR: 0, regu: wo.regu, ulp: wo.ulp, displayName: wo.name };
+          if (wo.isPlnMobile) {
+            rStats.totalWo++;
+            if (wo.rating === null || wo.ratingStr === "") rStats.noR++;
+            else if (wo.rating === 5) rStats.r5++;
+            else if (wo.rating === 4 || wo.rating === 3) rStats.r34++;
+            else if (wo.rating === 2 || wo.rating === 1) rStats.r12++;
+          }
+          officerRatingStats.set(nameKey, rStats);
+        }
+
+        // SLA STATS
+        if (wo.rpt >= 30) {
+          woOverSlaRptList.push([wo.id, wo.date ? wo.date.toLocaleString('id-ID') : wo.dateRaw, wo.name, Math.round(wo.rpt * 100) / 100, wo.rct >= 0 ? Math.round(wo.rct * 100) / 100 : '-', wo.durasiWo]);
+          rptOver30Ids.add(wo.id);
+          officerRptOverSla.set(wo.name, (officerRptOverSla.get(wo.name) || 0) + 1);
+        }
+        if (wo.rct >= 45) {
+          rptOver45Ids.add(wo.id);
+          officerRctOverSla.set(wo.name, (officerRctOverSla.get(wo.name) || 0) + 1);
+        }
+
+        if (wo.rpt >= 0) {
+          if (wo.rpt > highestRpt) highestRpt = wo.rpt;
+          totalRpt += wo.rpt;
+          rptCount++;
+        }
+        if (wo.rct >= 0) {
+          if (wo.rct > highestRct) highestRct = wo.rct;
+          totalRct += wo.rct;
           rctCount++;
         }
-        const shift = String(row[woShiftIdx] || 'null').toUpperCase().trim();
-        shiftMap.set(shift, (shiftMap.get(shift) || 0) + 1);
+        shiftMap.set(wo.shift, (shiftMap.get(wo.shift) || 0) + 1);
       }
 
-      const raw = officerWoRawStats.get(nameKey) || { total: 0, cctv: 0 };
-      officerWoRawStats.set(nameKey, { total: raw.total + 1, cctv: raw.cctv + (isCctv ? 1 : 0) });
-
-      if (isWithinUlp && isUp3) {
-        globalWoReports.set(reportId, (globalWoReports.get(reportId) || false) || isCctv);
-        filteredWoRows.push([...row]);
+      if (isUp3 && wo.isWithinUlp) {
+        filteredWoRows.push([...wo.rawRow]);
+        globalWoReports.set(wo.id, wo.isCctv);
       }
-      
-      if (!officerWoReports.has(nameKey)) officerWoReports.set(nameKey, new Map());
-      officerWoReports.get(nameKey)!.set(reportId, (officerWoReports.get(nameKey)!.get(reportId) || false) || isCctv);
-      
-      // Formula-style ULP aggregation: Match against each official ULP
-      const rowD = String(row[3] || "").toUpperCase();
-      const rowJ = String(row[woReguIdx] || "").toUpperCase().trim();
+
+      const nameKeyForRaw = this.cleanName(wo.name);
+      if (nameKeyForRaw && nameKeyForRaw !== "NAMAPETUGAS" && nameKeyForRaw !== "NAME") {
+        const raw = officerWoRawStats.get(nameKeyForRaw) || { total: 0, cctv: 0 };
+        officerWoRawStats.set(nameKeyForRaw, { total: raw.total + 1, cctv: raw.cctv + (wo.isCctv ? 1 : 0) });
+      }
 
       allUlps.forEach(targetUlp => {
         const expectedRegu = getExpectedRegu(targetUlp);
-        // Logic: REGEXMATCH(D, targetUlp) AND J == expectedRegu
-        if (rowD.includes(targetUlp.toUpperCase()) && rowJ === expectedRegu) {
+        const rowD = String(wo.ulp || "").toUpperCase(); // Using standardized ULP for matching
+        const rowJ = String(wo.regu || "").toUpperCase().trim();
+        // Since we already have unique WO per report ID, we can just check if it matches the ULP
+        if ((rowD.includes(targetUlp.toUpperCase()) || standardizeUlpName(wo.ulp) === standardizeUlpName(targetUlp)) && rowJ === expectedRegu) {
           if (!ulpWoReports.has(targetUlp)) ulpWoReports.set(targetUlp, new Map());
-          ulpWoReports.get(targetUlp)!.set(reportId, (ulpWoReports.get(targetUlp)!.get(reportId) || false) || isCctv);
+          // Since it's on OVER SLA page, chart should ONLY count Over SLA (RPT >= 30) for clarity?
+          // The user request was "Grafik JUMLAH WO MENURUT ULP ... berdasarkan NO LAPORAN dengan nilai UNIQUE"
+          // In the context of Over SLA page, we'll count unique reports where RPT >= 30
+          if (wo.rpt >= 30) {
+            ulpWoReports.get(targetUlp)!.set(wo.id, wo.isCctv);
+          }
         }
       });
     });
@@ -1054,7 +1024,8 @@ export class GoogleSheetsService {
       woIndices: { 
         name: woNameIdx, ulp: woUlpIdx, cctv: woCctvIdx, 
         tglLapor: woDateIdx, tglPengerjaan: woTglPengerjaanIdx, tglSelesai: woTglSelesaiIdx,
-        source: woSourceIdx, reporter: woReporterIdx, shift: woShiftIdx
+        source: woSourceIdx, reporter: woReporterIdx, shift: woShiftIdx,
+        rpt: woRptIdx, rct: woRctIdx
       },
       poIndices: { name: poNameIdx, ulp: poUlpIdx, cctv: poCctvIdx },
     };

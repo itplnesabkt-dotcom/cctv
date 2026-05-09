@@ -32,7 +32,7 @@ export interface DashboardData {
   rawPoRows: any[][];
   woHeaders: string[];
   poHeaders: string[];
-  woIndices: { name: number; ulp: number; cctv: number; tglLapor: number; tglPengerjaan: number; tglSelesai: number; source: number; reporter: number; shift: number };
+  woIndices: { name: number; ulp: number; cctv: number; tglLapor: number; tglPengerjaan: number; tglSelesai: number; source: number; reporter: number; shift: number; rpt: number; rct: number };
   poIndices: { name: number; ulp: number; cctv: number };
 }
 

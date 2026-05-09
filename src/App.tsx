@@ -150,6 +150,80 @@ export default function App() {
     setModalOpen(true);
   };
 
+  const handleOverSLADetailClick = (criteria: string, value?: string) => {
+    if (!data) return;
+
+    const headers = data.woHeaders;
+    const rawRows = data.rawWoRows;
+    const indices = data.woIndices;
+
+    let filteredRows = rawRows;
+    let title = "DETAIL DATA OVER SLA";
+
+    const getRptValue = (row: any[]) => {
+      if (indices.rpt !== -1 && row[indices.rpt]) {
+        return parseFloat(String(row[indices.rpt]).replace(",", "."));
+      }
+      return -1;
+    };
+
+    const getRctValue = (row: any[]) => {
+      if (indices.rct !== -1 && row[indices.rct]) {
+        return parseFloat(String(row[indices.rct]).replace(",", "."));
+      }
+      return -1;
+    };
+
+    switch (criteria) {
+      case 'ALL':
+        title = "DETAIL SELURUH DATA GANGGUAN";
+        break;
+      case 'RPT_OVER_30':
+        filteredRows = rawRows.filter(row => getRptValue(row) >= 30);
+        title = "DETAIL WO RPT > 30 MENIT";
+        break;
+      case 'RPT_OVER_45':
+        filteredRows = rawRows.filter(row => getRptValue(row) >= 45);
+        title = "DETAIL WO RPT > 45 MENIT";
+        break;
+      case 'HIGHEST_RPT':
+        const maxRpt = Math.max(...rawRows.map(row => getRptValue(row)));
+        filteredRows = rawRows.filter(row => getRptValue(row) === maxRpt);
+        title = "DETAIL DURASI RPT TERTINGGI";
+        break;
+      case 'HIGHEST_RCT':
+        const maxRct = Math.max(...rawRows.map(row => getRctValue(row)));
+        filteredRows = rawRows.filter(row => getRctValue(row) === maxRct);
+        title = "DETAIL DURASI RCT TERTINGGI";
+        break;
+      case 'AVG_RPT':
+        filteredRows = rawRows.filter(row => getRptValue(row) >= 0);
+        title = "DETAIL DATA RATA-RATA RPT";
+        break;
+      case 'AVG_RCT':
+        filteredRows = rawRows.filter(row => getRctValue(row) >= 0);
+        title = "DETAIL DATA RATA-RATA RCT";
+        break;
+      case 'ULP':
+        if (value) {
+          const targetUlp = value.toUpperCase().trim();
+          filteredRows = rawRows.filter(row => {
+            let rowUlp = "";
+            if (indices.ulp !== -1 && row[indices.ulp]) {
+              rowUlp = String(row[indices.ulp]).toUpperCase().replace(/^POSKO ULP\s+/i, '').replace(/^ULP\s+/i, '').trim();
+            }
+            return rowUlp === targetUlp || String(row[indices.name] || '').toUpperCase().includes(targetUlp);
+          });
+          title = `DETAIL DATA WO - ULP: ${value}`;
+        }
+        break;
+    }
+
+    setModalHeaders(headers);
+    setModalRows(filteredRows);
+    setModalOpen(true);
+  };
+
   useEffect(() => {
     const loadData = async (showLoading = false) => {
       // If we already have data and are just changing ULP, we don't need a full-page loader
@@ -289,7 +363,10 @@ export default function App() {
                 </div>
               </div>
             ) : activeTab === 'OVER_SLA' ? (
-              <OverSLAPage data={filteredData?.overSla || data.overSla} />
+              <OverSLAPage 
+                data={filteredData?.overSla || data.overSla} 
+                onDetailClick={handleOverSLADetailClick}
+              />
             ) : (
               <RatingPage data={filteredData || data} />
             )}

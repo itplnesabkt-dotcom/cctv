@@ -6,10 +6,17 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface OverSLAPageProps {
   data: OverSLAData;
+  onDetailClick?: (criteria: string, value?: string) => void;
 }
 
-export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
+export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data, onDetailClick }) => {
   const COLORS = ['#26C6DA', '#FFD700', '#9C27B0', '#4CAF50', '#F44336', '#FF9800'];
+
+  const handleBarClick = (barData: any) => {
+    if (onDetailClick && barData && barData.name) {
+      onDetailClick('ULP', barData.name);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-sky-100 rounded-2xl min-h-full">
@@ -22,13 +29,13 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
               <h4 className="text-sm font-black italic tracking-tighter uppercase">RINGKASAN DATA</h4>
             </div>
             <div className="p-3 flex flex-col gap-3 flex-1 bg-gray-50/30">
-              <StatCard label="TOTAL JUMLAH GANGGUAN" value={data.totalGangguan} color="#4CAF50" />
-              <StatCard label="DURASI RPT TERTINGGI" value={data.highestRpt} color="#FF7043" />
-              <StatCard label="DURASI RCT TERTINGGI" value={data.highestRct} color="#616161" />
-              <StatCard label="WO RPT > 30 MNT" value={data.countRptOver30} color="#1565C0" />
-              <StatCard label="WO RPT > 45 MNT" value={data.countRptOver45} color="#C62828" />
-              <StatCard label="RATA-RATA RPT" value={data.avgRpt} color="#43A047" />
-              <StatCard label="RATA-RATA RCT" value={data.avgRct} color="#2E7D32" />
+              <StatCard label="TOTAL JUMLAH GANGGUAN" value={data.totalGangguan} color="#4CAF50" onClick={() => onDetailClick?.('ALL')} />
+              <StatCard label="DURASI RPT TERTINGGI" value={data.highestRpt} color="#FF7043" onClick={() => onDetailClick?.('HIGHEST_RPT')} />
+              <StatCard label="DURASI RCT TERTINGGI" value={data.highestRct} color="#616161" onClick={() => onDetailClick?.('HIGHEST_RCT')} />
+              <StatCard label="WO RPT > 30 MNT" value={data.countRptOver30} color="#1565C0" onClick={() => onDetailClick?.('RPT_OVER_30')} />
+              <StatCard label="WO RPT > 45 MNT" value={data.countRptOver45} color="#C62828" onClick={() => onDetailClick?.('RPT_OVER_45')} />
+              <StatCard label="RATA-RATA RPT" value={data.avgRpt} color="#43A047" onClick={() => onDetailClick?.('AVG_RPT')} />
+              <StatCard label="RATA-RATA RCT" value={data.avgRct} color="#2E7D32" onClick={() => onDetailClick?.('AVG_RCT')} />
             </div>
           </div>
         </div>
@@ -131,7 +138,14 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
                   contentStyle={{ backgroundColor: '#fff', border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                   itemStyle={{ fontSize: '10px', fontWeight: 'bold' }}
                 />
-                <Bar dataKey="value" fill="#26C6DA" radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 10, fill: '#444', fontWeight: 'bold' }} />
+                <Bar 
+                  dataKey="value" 
+                  fill="#26C6DA" 
+                  radius={[0, 4, 4, 0]} 
+                  label={{ position: 'right', fontSize: 10, fill: '#444', fontWeight: 'bold' }} 
+                  onClick={handleBarClick}
+                  style={{ cursor: 'pointer' }}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -176,9 +190,13 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data }) => {
   );
 };
 
-const StatCard: React.FC<{ label: string; value: number | string; color: string }> = ({ label, value, color }) => (
-  <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm relative overflow-hidden group">
-    <div className="absolute top-0 right-0 w-16 h-16 bg-gray-50/50 rounded-full -mr-8 -mt-8" />
+const StatCard: React.FC<{ label: string; value: number | string; color: string; onClick?: () => void }> = ({ label, value, color, onClick }) => (
+  <button 
+    onClick={onClick}
+    className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm relative overflow-hidden group text-left transition-all hover:border-brand-primary/30 hover:shadow-md cursor-pointer disabled:cursor-default"
+    disabled={!onClick}
+  >
+    <div className="absolute top-0 right-0 w-16 h-16 bg-gray-50/50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform" />
     <span className="text-[14px] font-black italic tracking-tighter text-gray-400 uppercase mb-1 block leading-none">
       {label}
     </span>
@@ -188,7 +206,7 @@ const StatCard: React.FC<{ label: string; value: number | string; color: string 
         {value}
       </span>
     </div>
-  </div>
+  </button>
 );
 
 const SmallTable: React.FC<{ 
