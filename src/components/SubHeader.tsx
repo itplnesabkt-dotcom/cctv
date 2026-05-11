@@ -85,7 +85,7 @@ export const SubHeader: React.FC<SubHeaderProps> = ({
           
           <div className="relative group">
             <button className="flex items-center gap-2 text-[10px] font-black text-brand-primary tracking-wider hover:opacity-70 transition-opacity uppercase">
-              {selectedUlp || (activeTab === 'OVER_SLA' ? "SEMUA POSKO" : "SEMUA KANTOR UNIT")}
+              {selectedUlp || "SEMUA KANTOR UNIT"}
               <ChevronDown size={14} className="text-gray-400" />
             </button>
             <div className="absolute top-full left-0 mt-2 w-48 bg-white border border-gray-100 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-[100] py-2">
@@ -93,7 +93,7 @@ export const SubHeader: React.FC<SubHeaderProps> = ({
                 onClick={() => onUlpChange("")}
                 className="w-full text-left px-4 py-2 text-[10px] font-bold text-gray-600 hover:bg-gray-50 hover:text-brand-primary uppercase"
               >
-                {activeTab === 'OVER_SLA' ? "SEMUA POSKO" : "SEMUA KANTOR UNIT"}
+                SEMUA KANTOR UNIT
               </button>
               {ulpList.map(ulp => (
                 <button 

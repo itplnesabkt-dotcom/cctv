@@ -200,6 +200,10 @@ export class GoogleSheetsService {
           idx = row.findIndex(h => h.includes("tgl lapor") || h.includes("tgl lap") || h.includes("tanggal") || h.includes("date") || h.includes("tgl"));
         } else if (t === "no laporan" || t === "no tugas") {
           idx = row.findIndex(h => (h.includes("no") && (h.includes("lap") || h.includes("tug"))) || h === "id" || h.includes("laporan id") || h.includes("id laporan") || h.includes("task id") || h.includes("id tugas"));
+        } else if (t === "ulp" || t === "ulp id" || t === "ulpid") {
+          idx = row.findIndex(h => h === "ulp" || h === "ulpid" || h === "ulp_id" || h === "ulp id" || h.includes("ulp") || h === "unit" || h === "posko" || h.includes("posko"));
+        } else if (t === "apkt status" || t === "status apkt") {
+          idx = row.findIndex(h => h.toLowerCase().includes("status") && h.toLowerCase().includes("apkt"));
         } else if (t === "nama regu") {
           idx = row.findIndex(h => h.includes("regu") || h.includes("team"));
         } else if (t === "rating") {
@@ -266,6 +270,7 @@ export class GoogleSheetsService {
 
     const now = Date.now();
     let woRows: any[][], poRows: any[][], petugasRows: any[][], ulpRows: any[][], poskoRows: any[][], ratingRows: any[][];
+    const woOverSlaRptList: any[][] = [];
 
     // 1. DATA ACQUISITION (Cached or Fresh)
     const canUseRawCache = this.rawDataCache && 
@@ -339,16 +344,19 @@ export class GoogleSheetsService {
     }
 
     const officerToUlp = new Map<string, string>();
+    const officerToName = new Map<string, string>();
     officers.forEach(o => {
-      let ulpName = (ulpMap.get(o.ulpId) || o.directUlp || "Unknown").toUpperCase().trim();
-      ulpName = ulpName.replace(/^POSKO ULP\s+/i, "").trim();
-      officerToUlp.set(this.cleanName(o.name), ulpName);
+      let ulpName = (ulpMap.get(o.ulpId) || o.directUlp || "Unknown");
+      ulpName = standardizeUlpName(ulpName);
+      const nKey = this.cleanName(o.name);
+      officerToUlp.set(nKey, ulpName);
+      officerToName.set(nKey, o.name);
     });
 
     // Determine official ULPs list beforehand for REGEX-style matching
     const allUlps = Array.from(new Set(officers.map(o => {
-      let ulpName = (ulpMap.get(o.ulpId) || o.directUlp || "Unknown").toUpperCase().trim();
-      return ulpName.replace(/^ULP\s+/i, ""); // Standardize to base name if it starts with ULP
+      let ulpName = (ulpMap.get(o.ulpId) || o.directUlp || "Unknown");
+      return standardizeUlpName(ulpName);
     }))).filter(u => u !== "UNKNOWN" && isUp3Regu(u));
 
     const getExpectedRegu = (ulpName: string) => {
@@ -376,7 +384,7 @@ export class GoogleSheetsService {
     };
 
     // 3. Aggregate WO data
-    const woTargets = ["nama petugas", "cctv", "tanggal", "no laporan", "nama regu", "ulp", "tgl pengerjaan", "tgl selesai", "sumber lapor", "pelapor", "shift", "rpt", "rct", "durasi wo", "posko", "rating", "poskoid"];
+    const woTargets = ["nama petugas", "cctv", "tanggal", "no laporan", "nama regu", "ulp", "tgl pengerjaan", "tgl selesai", "sumber lapor", "pelapor", "shift", "rpt", "rct", "durasi wo", "posko", "rating", "poskoid", "apkt status"];
     const { headerRowIdx: woHeaderIdx, colIndices: woCols } = this.findHeaderAndCols(woRows, woTargets);
     const woNameIdx = woCols[0] !== -1 ? woCols[0] : 10;
     const woCctvIdx = woCols[1] !== -1 ? woCols[1] : 42;
@@ -395,6 +403,7 @@ export class GoogleSheetsService {
     const woPoskoIdx = woCols[14];
     const woRatingIdx = woCols[15];
     const woPoskoidIdx = woCols[16];
+    const woApktStatusIdx = woCols[17] !== -1 ? woCols[17] : 39; // Column AN
 
     const woDataStart = woHeaderIdx !== -1 ? woHeaderIdx + 1 : 0;
     
@@ -439,13 +448,18 @@ export class GoogleSheetsService {
       regu: string;
       isPlnMobile: boolean;
       isWithinUlp: boolean;
+      apktStatus: string;
       rawRow: any[];
     }>();
+
+    const officerRptOverSlaCount = new Map<string, number>();
+    const officerRctOverSlaCount = new Map<string, number>();
 
     woRows.slice(woDataStart).forEach((row) => {
       if (!row || row.length < 3) return;
       
-      const reportId = String(row[woIdIdx] || row[13] || "").trim().toUpperCase();
+      const rawReportId = String(row[woIdIdx] || row[13] || "").trim();
+      const reportId = this.normalizeForMatch(rawReportId);
       if (!reportId) return;
 
       const rowDateRaw = woDateIdx !== -1 && woDateIdx < row.length ? String(row[woDateIdx] || "").trim() : "";
@@ -454,6 +468,7 @@ export class GoogleSheetsService {
 
       const nameRaw = woNameIdx !== -1 && woNameIdx < row.length ? String(row[woNameIdx] || "").trim() : "";
       const nameKey = this.cleanName(nameRaw);
+      const properName = nameKey ? (officerToName.get(nameKey) || nameRaw) : nameRaw;
       
       const woPoskoValue = woPoskoIdx !== -1 && woPoskoIdx < row.length ? String(row[woPoskoIdx] || "").trim() : "";
       const normalizedPosko = this.normalizeForMatch(woPoskoValue);
@@ -495,6 +510,8 @@ export class GoogleSheetsService {
 
       const sourceRaw = woSourceIdx !== -1 && woSourceIdx < row.length ? String(row[woSourceIdx] || "").trim().toUpperCase() : "";
       const isPlnMobile = sourceRaw === "PLN MOBILE";
+      const apktStatus = woApktStatusIdx !== -1 && woApktStatusIdx < row.length ? String(row[woApktStatusIdx] || "").trim().toUpperCase() : "";
+      const isSelesai = apktStatus === "SELESAI";
       const ratingStr = woRatingIdx !== -1 && woRatingIdx < row.length ? String(row[woRatingIdx] || "").trim() : "";
       const ratingVal = ratingStr === "" || isNaN(parseInt(ratingStr)) ? null : parseInt(ratingStr);
       
@@ -505,6 +522,25 @@ export class GoogleSheetsService {
       }
 
       const reguValue = woReguIdx !== -1 && woReguIdx < row.length ? String(row[woReguIdx] || "").trim() : "";
+
+      // Add to Over SLA RPT list (include duplicates for the table specifically)
+      const isUp3 = isUp3Regu(reguValue);
+      if (isWithinUlp && isUp3 && isSelesai) {
+        if (rpt >= 30) {
+          woOverSlaRptList.push([
+            rawReportId.toUpperCase(),
+            rowDate ? rowDate.toLocaleString('id-ID') : rowDateRaw,
+            properName,
+            Math.round(rpt * 100) / 100,
+            rctVal >= 0 ? Math.round(rctVal * 100) / 100 : '-',
+            durasiWo
+          ]);
+          officerRptOverSlaCount.set(properName, (officerRptOverSlaCount.get(properName) || 0) + 1);
+        }
+        if (rctVal >= 45) {
+          officerRctOverSlaCount.set(properName, (officerRctOverSlaCount.get(properName) || 0) + 1);
+        }
+      }
 
       const existing = uniqueWoMap.get(reportId);
       if (existing) {
@@ -538,11 +574,11 @@ export class GoogleSheetsService {
         }
       } else {
         uniqueWoMap.set(reportId, {
-          id: reportId,
+          id: rawReportId.toUpperCase(),
           rpt,
           rct: rctVal,
           isCctv,
-          name: nameRaw,
+          name: properName,
           ulp: ulpName,
           posko: poskoName,
           date: rowDate,
@@ -555,6 +591,7 @@ export class GoogleSheetsService {
           regu: reguValue,
           isPlnMobile,
           isWithinUlp,
+          apktStatus,
           rawRow: [...row]
         });
       }
@@ -570,10 +607,8 @@ export class GoogleSheetsService {
     const allPoskosSet = new Set<string>();
 
     let highestRpt = 0, highestRct = 0, totalRpt = 0, totalRct = 0, rptCount = 0, rctCount = 0;
-    const woOverSlaRptList: any[][] = [];
+    // woOverSlaRptList, officerRptOverSlaCount, officerRctOverSlaCount are now populated in the first pass
     const shiftMap = new Map<string, number>();
-    const officerRptOverSla = new Map<string, number>();
-    const officerRctOverSla = new Map<string, number>();
     const rptOver30Ids = new Set<string>();
     const rptOver45Ids = new Set<string>();
 
@@ -594,11 +629,13 @@ export class GoogleSheetsService {
     });
 
     // Process Unique WO Data for stats
+    let totalSlaGangguan = 0;
     uniqueWoMap.forEach((wo) => {
       if (wo.posko) allPoskosSet.add(wo.posko.toUpperCase().trim());
       
       const standardizedDisplayUlp = standardizeUlpName(wo.ulp);
       const isUp3 = isUp3Regu(wo.regu);
+      const isSelesai = wo.apktStatus === "SELESAI";
 
       if (wo.isWithinUlp) {
         if (wo.isPlnMobile) {
@@ -639,30 +676,30 @@ export class GoogleSheetsService {
         }
 
         // SLA STATS
-        if (wo.rpt >= 30) {
-          woOverSlaRptList.push([wo.id, wo.date ? wo.date.toLocaleString('id-ID') : wo.dateRaw, wo.name, Math.round(wo.rpt * 100) / 100, wo.rct >= 0 ? Math.round(wo.rct * 100) / 100 : '-', wo.durasiWo]);
-          rptOver30Ids.add(wo.id);
-          officerRptOverSla.set(wo.name, (officerRptOverSla.get(wo.name) || 0) + 1);
-        }
-        if (wo.rct >= 45) {
-          rptOver45Ids.add(wo.id);
-          officerRctOverSla.set(wo.name, (officerRctOverSla.get(wo.name) || 0) + 1);
-        }
+        if (isSelesai) {
+          totalSlaGangguan++;
+          if (wo.rpt >= 30) {
+            rptOver30Ids.add(wo.id);
+          }
+          if (wo.rct >= 45) {
+            rptOver45Ids.add(wo.id);
+          }
 
-        if (wo.rpt >= 0) {
-          if (wo.rpt > highestRpt) highestRpt = wo.rpt;
-          totalRpt += wo.rpt;
-          rptCount++;
+          if (wo.rpt >= 0) {
+            if (wo.rpt > highestRpt) highestRpt = wo.rpt;
+            totalRpt += wo.rpt;
+            rptCount++;
+          }
+          if (wo.rct >= 0) {
+            if (wo.rct > highestRct) highestRct = wo.rct;
+            totalRct += wo.rct;
+            rctCount++;
+          }
+          shiftMap.set(wo.shift, (shiftMap.get(wo.shift) || 0) + 1);
         }
-        if (wo.rct >= 0) {
-          if (wo.rct > highestRct) highestRct = wo.rct;
-          totalRct += wo.rct;
-          rctCount++;
-        }
-        shiftMap.set(wo.shift, (shiftMap.get(wo.shift) || 0) + 1);
       }
 
-      if (isUp3 && wo.isWithinUlp) {
+      if (isUp3 && wo.isWithinUlp && isSelesai) {
         filteredWoRows.push([...wo.rawRow]);
         globalWoReports.set(wo.id, wo.isCctv);
       }
@@ -673,21 +710,31 @@ export class GoogleSheetsService {
         officerWoRawStats.set(nameKeyForRaw, { total: raw.total + 1, cctv: raw.cctv + (wo.isCctv ? 1 : 0) });
       }
 
-      allUlps.forEach(targetUlp => {
-        const expectedRegu = getExpectedRegu(targetUlp);
-        const rowD = String(wo.ulp || "").toUpperCase(); // Using standardized ULP for matching
-        const rowJ = String(wo.regu || "").toUpperCase().trim();
-        // Since we already have unique WO per report ID, we can just check if it matches the ULP
-        if ((rowD.includes(targetUlp.toUpperCase()) || standardizeUlpName(wo.ulp) === standardizeUlpName(targetUlp)) && rowJ === expectedRegu) {
-          if (!ulpWoReports.has(targetUlp)) ulpWoReports.set(targetUlp, new Map());
-          // Since it's on OVER SLA page, chart should ONLY count Over SLA (RPT >= 30) for clarity?
-          // The user request was "Grafik JUMLAH WO MENURUT ULP ... berdasarkan NO LAPORAN dengan nilai UNIQUE"
-          // In the context of Over SLA page, we'll count unique reports where RPT >= 30
+      const standardizedRowUlp = standardizeUlpName(wo.ulp);
+      const matchingTargetUlp = allUlps.find(u => standardizeUlpName(u) === standardizedRowUlp);
+
+      if (isSelesai) {
+        if (matchingTargetUlp) {
+          if (!ulpWoReports.has(matchingTargetUlp)) ulpWoReports.set(matchingTargetUlp, new Map());
           if (wo.rpt >= 30) {
-            ulpWoReports.get(targetUlp)!.set(wo.id, wo.isCctv);
+            ulpWoReports.get(matchingTargetUlp)!.set(wo.id, wo.isCctv);
           }
+        } else {
+          // Fallback for reports where officer or ULP was not found in PETUGAS sheet
+          allUlps.forEach(targetUlp => {
+            const expectedRegu = getExpectedRegu(targetUlp);
+            const rowJ = String(wo.regu || "").toUpperCase().replace(/\s+/g, "").trim();
+            const normExpected = expectedRegu.toUpperCase().replace(/\s+/g, "").trim();
+            
+            if (rowJ === normExpected && (String(wo.ulp || "").toUpperCase().includes(targetUlp.toUpperCase()))) {
+              if (!ulpWoReports.has(targetUlp)) ulpWoReports.set(targetUlp, new Map());
+              if (wo.rpt >= 30) {
+                ulpWoReports.get(targetUlp)!.set(wo.id, wo.isCctv);
+              }
+            }
+          });
         }
-      });
+      }
     });
 
     // Calculate WO Stats
@@ -887,7 +934,7 @@ export class GoogleSheetsService {
       allUlps,
       allPoskos: Array.from(allPoskosSet).sort(),
       overSla: {
-        totalGangguan: totalWoCount,
+        totalGangguan: totalSlaGangguan,
         highestRpt: Math.round(highestRpt * 100) / 100,
         highestRct: Math.round(highestRct * 100) / 100,
         countRptOver30: rptOver30Ids.size,
@@ -899,11 +946,11 @@ export class GoogleSheetsService {
           .map(row => row.slice(0, 5)) // Remove durasiWo from output
           .slice(0, 50),
         shiftDistribution: Array.from(shiftMap.entries()).map(([name, value]) => ({ name, value })),
-        officerOverSlaRpt: Array.from(officerRptOverSla.entries())
+        officerOverSlaRpt: Array.from(officerRptOverSlaCount.entries())
           .map(([name, count]) => ({ name, count }))
           .sort((a, b) => b.count - a.count)
           .slice(0, 10),
-        officerOverSlaRct: Array.from(officerRctOverSla.entries())
+        officerOverSlaRct: Array.from(officerRctOverSlaCount.entries())
           .map(([name, count]) => ({ name, count }))
           .sort((a, b) => b.count - a.count)
           .slice(0, 10),

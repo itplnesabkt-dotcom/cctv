@@ -94,9 +94,9 @@ export default function App() {
   // Filter logic options
   const filterList = React.useMemo(() => {
     if (!data) return [];
-    if (activeTab === 'OVER_SLA') return data.allPoskos || [];
+    // Both CCTV and OVER_SLA now use UNIT (ULP) filter as requested
     return data.allUlps || [];
-  }, [data, activeTab]);
+  }, [data]);
 
   const handleDetailClick = (type: 'WO' | 'PO', identifier: string, isUlp: boolean, isCctv: boolean) => {
     if (!data) return;
