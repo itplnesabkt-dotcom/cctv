@@ -96,7 +96,7 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data, onDetailClick })
         <div className="lg:col-span-4 flex flex-col gap-4">
           {/* Officer RPT Table */}
           <SmallTable 
-            title="PETUGAS" 
+            title="RATING PETUGAS" 
             subtitle="OVER SLA RPT" 
             headers={['NAMA PETUGAS', 'JML WO']}
             data={data.officerOverSlaRpt.map(o => [o.name, o.count])}
@@ -107,7 +107,7 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data, onDetailClick })
 
           {/* Officer RCT Table */}
           <SmallTable 
-            title="PETUGAS" 
+            title="RATING PETUGAS" 
             subtitle="OVER SLA RCT" 
             headers={['NAMA PETUGAS', 'JML WO']}
             data={data.officerOverSlaRct.map(o => [o.name, o.count])}
@@ -126,7 +126,7 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data, onDetailClick })
             <div className="flex items-center gap-3 mb-6">
               <div className="w-1.5 h-6 bg-brand-secondary rounded-full" />
               <h3 className="text-sm font-black italic tracking-tighter text-brand-primary uppercase">
-                JUMLAH WO <span className="text-brand-secondary">MENURUT ULP</span>
+                JUMLAH WO OVER <span className="text-brand-secondary">SLA MENURUT ULP</span>
               </h3>
             </div>
             <ResponsiveContainer width="100%" height={250}>
