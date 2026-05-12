@@ -66,16 +66,7 @@ export default function App() {
         const avgB = (parseFloat(b.persenWo) || 0) + (parseFloat(b.persenPo) || 0);
         return avgB - avgA;
       }),
-      summary: selectedUlp 
-        ? {
-            ...data.summary,
-            totalBaca: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.jumlahWoTotal, 0),
-            totalValid: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.totalWoPakaiCctv, 0),
-            totalPo: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.jumlahPoTotal, 0),
-            totalPoCctv: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.totalPoPakaiCctv, 0),
-            dataAktif: data.officerPerformance.filter(o => o.ulp === selectedUlp).reduce((a, b) => a + b.jumlahPoTotal, 0),
-          }
-        : data.summary,
+      summary: data.summary,
       rating: {
         ...data.rating,
         officerRatings: selectedUlp
@@ -122,7 +113,9 @@ export default function App() {
     }
 
     // 2. Filter by ULP or Officer
-    if (isUlp) {
+    if (identifier === "UP3" || identifier === "ALL") {
+      setModalTitle(`DETAIL DATA ${type}${isCctv ? ' (CCTV)' : ''} - UP3 BUKITTINGGI`);
+    } else if (isUlp) {
       const targetUlp = identifier.toUpperCase().trim();
       filteredRows = filteredRows.filter(row => {
         let rowUlp = "";
@@ -337,8 +330,12 @@ export default function App() {
                   <WOUP3Card 
                     totalWo={filteredData?.summary.totalBaca || 0} 
                     totalWoCctv={filteredData?.summary.totalValid || 0} 
+                    onDetailClick={(isCctv) => handleDetailClick('WO', 'UP3', true, isCctv)}
                   />
-                  <ULPStatsCard ulpData={filteredData?.ulpPerformance || []} />
+                  <ULPStatsCard 
+                    ulpData={filteredData?.ulpPerformance || []} 
+                    onDetailClick={(ulp, isCctv) => handleDetailClick('WO', ulp, true, isCctv)}
+                  />
                 </div>
 
                 {/* Center Column - Performance Tables */}
@@ -358,8 +355,12 @@ export default function App() {
                   <POUP3Card 
                     totalPo={filteredData?.summary.totalPo || 0} 
                     totalPoCctv={filteredData?.summary.totalPoCctv || 0} 
+                    onDetailClick={(isCctv) => handleDetailClick('PO', 'UP3', true, isCctv)}
                   />
-                  <ULPPOStatsCard ulpData={filteredData?.ulpPerformance || []} />
+                  <ULPPOStatsCard 
+                    ulpData={filteredData?.ulpPerformance || []} 
+                    onDetailClick={(ulp, isCctv) => handleDetailClick('PO', ulp, true, isCctv)}
+                  />
                 </div>
               </div>
             ) : activeTab === 'OVER_SLA' ? (

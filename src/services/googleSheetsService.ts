@@ -343,34 +343,56 @@ export class GoogleSheetsService {
       });
     }
 
+    const getCanonicalUlpName = (name: string) => {
+      if (!name) return "";
+      const u = name.toUpperCase().trim();
+      if (u.includes("BUKITTINGGI")) return "BUKITTINGGI";
+      if (u.includes("PADANG PANJANG") || u.includes("PADANGPANJANG")) return "PADANG PANJANG";
+      if (u.includes("LUBUK SIKAPING")) return "LUBUK SIKAPING";
+      if (u.includes("LUBUK BASUNG")) return "LUBUK BASUNG";
+      if (u.includes("SIMPANG EMPAT")) return "SIMPANG EMPAT";
+      if (u.includes("BASO")) return "BASO";
+      if (u.includes("KOTO TUO") || u.includes("KOTOTUO")) return "KOTO TUO";
+      return name;
+    }
+
     const officerToUlp = new Map<string, string>();
     const officerToName = new Map<string, string>();
     officers.forEach(o => {
       let ulpName = (ulpMap.get(o.ulpId) || o.directUlp || "Unknown");
-      ulpName = standardizeUlpName(ulpName);
+      let standardized = standardizeUlpName(ulpName);
+      ulpName = getCanonicalUlpName(standardized);
       const nKey = this.cleanName(o.name);
       officerToUlp.set(nKey, ulpName);
       officerToName.set(nKey, o.name);
     });
 
     // Determine official ULPs list beforehand for REGEX-style matching
+    const allUlpsOrder = ["BUKITTINGGI", "PADANG PANJANG", "LUBUK BASUNG", "LUBUK SIKAPING", "SIMPANG EMPAT", "BASO", "KOTO TUO"];
     const allUlps = Array.from(new Set(officers.map(o => {
       let ulpName = (ulpMap.get(o.ulpId) || o.directUlp || "Unknown");
-      return standardizeUlpName(ulpName);
-    }))).filter(u => u !== "UNKNOWN" && isUp3Regu(u));
+      let standardized = standardizeUlpName(ulpName);
+      return getCanonicalUlpName(standardized);
+    }))).filter(u => u !== "UNKNOWN" && isUp3Regu(u))
+    .sort((a, b) => {
+      const idxA = allUlpsOrder.indexOf(a);
+      const idxB = allUlpsOrder.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b);
+    });
 
     const getExpectedRegu = (ulpName: string) => {
       const u = ulpName.toUpperCase().trim();
-      switch (u) {
-        case "BUKITTINGGI": return "BUKITTINGGI";
-        case "PADANG PANJANG": return "PADANGPANJANG";
-        case "LUBUK SIKAPING": return "LUBUK SIKAPING";
-        case "LUBUK BASUNG": return "LUBUK BASUNG";
-        case "SIMPANG EMPAT": return "SIMPANG EMPAT";
-        case "BASO": return "BASO";
-        case "KOTO TUO": return "KOTOTUO";
-        default: return u;
-      }
+      if (u.includes("BUKITTINGGI")) return "BUKITTINGGI";
+      if (u.includes("PADANG PANJANG") || u.includes("PADANGPANJANG")) return "PADANGPANJANG";
+      if (u.includes("LUBUK SIKAPING")) return "LUBUK SIKAPING";
+      if (u.includes("LUBUK BASUNG")) return "LUBUK BASUNG";
+      if (u.includes("SIMPANG EMPAT")) return "SIMPANG EMPAT";
+      if (u.includes("BASO")) return "BASO";
+      if (u.includes("KOTO TUO") || u.includes("KOTOTUO")) return "KOTOTUO";
+      return u;
     };
 
     // 2. Date ranges
@@ -413,14 +435,14 @@ export class GoogleSheetsService {
         if (regu && regu !== "Unknown" && regu.toLowerCase() !== "nama regu") {
           let rUlp = "Unknown";
           if (woUlpIdx !== -1 && woUlpIdx < row.length) {
-            rUlp = standardizeUlpName(String(row[woUlpIdx] || ""));
+            rUlp = getCanonicalUlpName(standardizeUlpName(String(row[woUlpIdx] || "")));
           } else if (woPoskoidIdx !== -1 && woPoskoidIdx < row.length) {
             const pId = String(row[woPoskoidIdx] || "").trim();
-            rUlp = pId ? standardizeUlpName(ulpMap.get(pId) || "") : "Unknown";
+            rUlp = pId ? getCanonicalUlpName(standardizeUlpName(ulpMap.get(pId) || "")) : "Unknown";
           } else if (woPoskoIdx !== -1 && woPoskoIdx < row.length) {
             const pName = this.normalizeForMatch(String(row[woPoskoIdx] || ""));
             const uId = poskoToUlpIdMap.get(pName);
-            rUlp = uId ? standardizeUlpName(ulpMap.get(uId) || "") : "Unknown";
+            rUlp = uId ? getCanonicalUlpName(standardizeUlpName(ulpMap.get(uId) || "")) : "Unknown";
           }
           if (!allRegusInUlp.has(regu) || (allRegusInUlp.get(regu) === "Unknown" && rUlp !== "Unknown")) {
             allRegusInUlp.set(regu, rUlp);
@@ -452,8 +474,10 @@ export class GoogleSheetsService {
       rawRow: any[];
     }>();
 
+    const rawWoRowsFull: any[][] = [];
     const officerRptOverSlaCount = new Map<string, number>();
     const officerRctOverSlaCount = new Map<string, number>();
+    const officerWoRawStats = new Map<string, { total: number; cctv: number }>();
 
     woRows.slice(woDataStart).forEach((row) => {
       if (!row || row.length < 3) return;
@@ -487,10 +511,10 @@ export class GoogleSheetsService {
       const ulpName = officerUlp || ulpNameLookup || ulpNameFromWo || "Unknown";
       const poskoName = woPoskoValue || ulpName;
 
-      const standardizedDisplayUlp = standardizeUlpName(ulpName);
-      const standardizedDisplayPosko = standardizeUlpName(poskoName);
+      const standardizedDisplayUlp = getCanonicalUlpName(standardizeUlpName(ulpName));
+      const standardizedDisplayPosko = getCanonicalUlpName(standardizeUlpName(poskoName));
       
-      const targetUlpFilter = selectedUlp && selectedUlp !== "ALL" ? standardizeUlpName(selectedUlp) : null;
+      const targetUlpFilter = selectedUlp && selectedUlp !== "ALL" ? getCanonicalUlpName(standardizeUlpName(selectedUlp)) : null;
       const isWithinUlp = !targetUlpFilter || standardizedDisplayUlp === targetUlpFilter || standardizedDisplayPosko === targetUlpFilter;
 
       const cctvVal = row.length > woCctvIdx ? String(row[woCctvIdx] || "").trim().toUpperCase() : "";
@@ -523,8 +547,19 @@ export class GoogleSheetsService {
 
       const reguValue = woReguIdx !== -1 && woReguIdx < row.length ? String(row[woReguIdx] || "").trim() : "";
 
+      // Performance stats (count all reports as requested)
+      const nameKeyForRaw = this.cleanName(nameRaw);
+      if (nameKeyForRaw && nameKeyForRaw !== "NAMAPETUGAS" && nameKeyForRaw !== "NAME") {
+        const raw = officerWoRawStats.get(nameKeyForRaw) || { total: 0, cctv: 0 };
+        officerWoRawStats.set(nameKeyForRaw, { total: raw.total + 1, cctv: raw.cctv + (isCctv ? 1 : 0) });
+      }
+
       // Add to Over SLA RPT list (include duplicates for the table specifically)
       const isUp3 = isUp3Regu(reguValue);
+      if (isWithinUlp) {
+        rawWoRowsFull.push([...row]);
+      }
+      
       if (isWithinUlp && isUp3 && isSelesai) {
         if (rpt >= 30) {
           woOverSlaRptList.push([
@@ -599,7 +634,6 @@ export class GoogleSheetsService {
 
     const globalWoReports = new Map<string, boolean>();
     const ulpWoReports = new Map<string, Map<string, boolean>>();
-    const officerWoRawStats = new Map<string, { total: number; cctv: number }>();
     const officerRatingStats = new Map<string, { totalWo: number; r5: number; r34: number; r12: number; noR: number; regu: string; ulp: string; displayName: string; }>();
     const kpRatingStats = new Map<string, { totalWo: number; r5: number; r34: number; r12: number; noR: number; ulp: string; }>();
 
@@ -621,22 +655,51 @@ export class GoogleSheetsService {
 
     // Pre-populate KP STATS with all regus
     allRegusInUlp.forEach((uName, rName) => {
-      const standardizedRUlp = standardizeUlpName(uName);
-      const targetUlpFilter = selectedUlp && selectedUlp !== "ALL" ? standardizeUlpName(selectedUlp) : null;
+      const standardizedRUlp = getCanonicalUlpName(standardizeUlpName(uName));
+      const targetUlpFilter = selectedUlp && selectedUlp !== "ALL" ? getCanonicalUlpName(standardizeUlpName(selectedUlp)) : null;
       if (!targetUlpFilter || standardizedRUlp === targetUlpFilter) {
         kpRatingStats.set(rName, { totalWo: 0, r5: 0, r34: 0, r12: 0, noR: 0, ulp: uName });
       }
     });
+
+    const ulpWoReportsAll = new Map<string, Map<string, boolean>>();
+    const ulpWoReportsOverSla = new Map<string, Map<string, boolean>>();
 
     // Process Unique WO Data for stats
     let totalSlaGangguan = 0;
     uniqueWoMap.forEach((wo) => {
       if (wo.posko) allPoskosSet.add(wo.posko.toUpperCase().trim());
       
-      const standardizedDisplayUlp = standardizeUlpName(wo.ulp);
       const isUp3 = isUp3Regu(wo.regu);
       const isSelesai = wo.apktStatus === "SELESAI";
 
+      // Match ULP strictly by NAMA REGU (especially for CCTV and Summary pages)
+      const normRegu = String(wo.regu || "").toUpperCase().replace(/\s+/g, "").trim();
+      const targetUlpFromRegu = allUlps.find(u => {
+        const expected = getExpectedRegu(u).toUpperCase().replace(/\s+/g, "").trim();
+        return expected === normRegu;
+      });
+
+      // Override for CCTV logic: summary cards on CCTV tab should respect Regu-based filter
+      const targetUlpFilter = selectedUlp && selectedUlp !== "ALL" ? getCanonicalUlpName(standardizeUlpName(selectedUlp)) : null;
+      const isCctvFiltered = !targetUlpFilter || (targetUlpFromRegu === targetUlpFilter);
+
+      if (isUp3 && isCctvFiltered) {
+        globalWoReports.set(wo.id, wo.isCctv);
+      }
+
+      if (targetUlpFromRegu) {
+        if (!ulpWoReportsAll.has(targetUlpFromRegu)) ulpWoReportsAll.set(targetUlpFromRegu, new Map());
+        ulpWoReportsAll.get(targetUlpFromRegu)!.set(wo.id, wo.isCctv);
+
+        // Aggregate Over SLA stats strictly by Regu-based ULP mapping for charts
+        if (isSelesai && wo.rpt >= 30) {
+          if (!ulpWoReportsOverSla.has(targetUlpFromRegu)) ulpWoReportsOverSla.set(targetUlpFromRegu, new Map());
+          ulpWoReportsOverSla.get(targetUlpFromRegu)!.set(wo.id, wo.isCctv);
+        }
+      }
+
+      // 2. Original isWithinUlp logic for Rating and Over SLA (respects sheet-derived ULP/Posko)
       if (wo.isWithinUlp) {
         if (wo.isPlnMobile) {
           totalRatingWo++;
@@ -675,15 +738,10 @@ export class GoogleSheetsService {
           officerRatingStats.set(nameKey, rStats);
         }
 
-        // SLA STATS
         if (isSelesai) {
           totalSlaGangguan++;
-          if (wo.rpt >= 30) {
-            rptOver30Ids.add(wo.id);
-          }
-          if (wo.rct >= 45) {
-            rptOver45Ids.add(wo.id);
-          }
+          if (wo.rpt >= 30) rptOver30Ids.add(wo.id);
+          if (wo.rct >= 45) rptOver45Ids.add(wo.id);
 
           if (wo.rpt >= 0) {
             if (wo.rpt > highestRpt) highestRpt = wo.rpt;
@@ -699,60 +757,39 @@ export class GoogleSheetsService {
         }
       }
 
-      if (isUp3 && wo.isWithinUlp && isSelesai) {
+      if (isUp3 && isCctvFiltered && isSelesai) {
         filteredWoRows.push([...wo.rawRow]);
-        globalWoReports.set(wo.id, wo.isCctv);
       }
 
-      const nameKeyForRaw = this.cleanName(wo.name);
-      if (nameKeyForRaw && nameKeyForRaw !== "NAMAPETUGAS" && nameKeyForRaw !== "NAME") {
-        const raw = officerWoRawStats.get(nameKeyForRaw) || { total: 0, cctv: 0 };
-        officerWoRawStats.set(nameKeyForRaw, { total: raw.total + 1, cctv: raw.cctv + (wo.isCctv ? 1 : 0) });
-      }
-
-      const standardizedRowUlp = standardizeUlpName(wo.ulp);
-      const matchingTargetUlp = allUlps.find(u => standardizeUlpName(u) === standardizedRowUlp);
-
-      if (isSelesai) {
-        if (matchingTargetUlp) {
-          if (!ulpWoReports.has(matchingTargetUlp)) ulpWoReports.set(matchingTargetUlp, new Map());
-          if (wo.rpt >= 30) {
-            ulpWoReports.get(matchingTargetUlp)!.set(wo.id, wo.isCctv);
-          }
-        } else {
-          // Fallback for reports where officer or ULP was not found in PETUGAS sheet
-          allUlps.forEach(targetUlp => {
-            const expectedRegu = getExpectedRegu(targetUlp);
-            const rowJ = String(wo.regu || "").toUpperCase().replace(/\s+/g, "").trim();
-            const normExpected = expectedRegu.toUpperCase().replace(/\s+/g, "").trim();
-            
-            if (rowJ === normExpected && (String(wo.ulp || "").toUpperCase().includes(targetUlp.toUpperCase()))) {
-              if (!ulpWoReports.has(targetUlp)) ulpWoReports.set(targetUlp, new Map());
-              if (wo.rpt >= 30) {
-                ulpWoReports.get(targetUlp)!.set(wo.id, wo.isCctv);
-              }
-            }
-          });
-        }
-      }
     });
 
-    // Calculate WO Stats
-    let totalWoCount = 0;
-    let totalWoCctvCount = 0;
-    globalWoReports.forEach(hasCctv => {
-      totalWoCount++;
-      if (hasCctv) totalWoCctvCount++;
-    });
-
+    // 3. Aggregate WO Performance
     const ulpWoStatsMap = new Map<string, { total: number; cctv: number }>();
-    ulpWoReports.forEach((reports, ulp) => {
+    ulpWoReportsAll.forEach((reports, ulp) => {
       let t = 0, c = 0;
       reports.forEach(hasCctv => {
         t++;
         if (hasCctv) c++;
       });
       ulpWoStatsMap.set(ulp, { total: t, cctv: c });
+    });
+
+    const ulpWoOverSlaStatsMap = new Map<string, { total: number; cctv: number }>();
+    ulpWoReportsOverSla.forEach((reports, ulp) => {
+      let t = 0, c = 0;
+      reports.forEach(hasCctv => {
+        t++;
+        if (hasCctv) c++;
+      });
+      ulpWoOverSlaStatsMap.set(ulp, { total: t, cctv: c });
+    });
+
+    // Calculate overall WO summary counters
+    let totalWoCount = 0;
+    let totalWoCctvCount = 0;
+    globalWoReports.forEach(hasCctv => {
+      totalWoCount++;
+      if (hasCctv) totalWoCctvCount++;
     });
 
     // 4. Aggregate PO data
@@ -798,42 +835,39 @@ export class GoogleSheetsService {
       let poskoName = poPoskoValue || ulpName;
 
       const reguValue = String(row[poReguIdx] || "").trim();
-      
-      const displayUlpName = ulpName.toUpperCase().replace(/^POSKO ULP\s+/i, "").trim();
-      const displayPoskoName = poskoName.toUpperCase().trim();
-      const isWithinUlp = !selectedUlp || displayUlpName === selectedUlp.toUpperCase().trim() || displayPoskoName === selectedUlp.toUpperCase().trim();
+      const normRegu = reguValue.toUpperCase().replace(/\s+/g, "").trim();
 
+      // Match ULP strictly by Regu for PO/CCTV cards
+      const targetUlpFromRegu = allUlps.find(u => {
+        const expected = getExpectedRegu(u).toUpperCase().replace(/\s+/g, "").trim();
+        return expected === normRegu;
+      });
+
+      const targetUlpFilter = selectedUlp && selectedUlp !== "ALL" ? getCanonicalUlpName(standardizeUlpName(selectedUlp)) : null;
+      const isFilteredForCctvTab = !targetUlpFilter || (targetUlpFromRegu === targetUlpFilter);
+
+      const isUp3 = isUp3Regu(reguValue);
       const taskId = String(row[poIdIdx] || "").trim();
       if (!taskId) return;
 
       const cctvVal = row.length > poCctvIdx ? String(row[poCctvIdx] || "").trim().toUpperCase() : "";
       const isCctv = cctvVal.includes("CCTV");
 
-      const isUp3 = isUp3Regu(reguValue);
-
-      if (isWithinUlp && isUp3) {
+      if (isUp3 && isFilteredForCctvTab && targetUlpFromRegu) {
         filteredPoRows.push([...row]);
         globalPoTasks.set(taskId, (globalPoTasks.get(taskId) || false) || isCctv);
       }
       
+      if (targetUlpFromRegu) {
+        if (!ulpPoTasks.has(targetUlpFromRegu)) ulpPoTasks.set(targetUlpFromRegu, new Map());
+        ulpPoTasks.get(targetUlpFromRegu)!.set(taskId, (ulpPoTasks.get(targetUlpFromRegu)!.get(taskId) || false) || isCctv);
+      }
+
       if (!officerPoTasks.has(nameKey)) officerPoTasks.set(nameKey, new Map());
       officerPoTasks.get(nameKey)!.set(taskId, (officerPoTasks.get(nameKey)!.get(taskId) || false) || isCctv);
       
       const raw = officerPoRawStats.get(nameKey) || { total: 0, cctv: 0 };
       officerPoRawStats.set(nameKey, { total: raw.total + 1, cctv: raw.cctv + (isCctv ? 1 : 0) });
-      
-      // Formula-style ULP aggregation: Match against each official ULP
-      const rowColD_PO = String(row[3] || "").toUpperCase(); // Using Column D for REGEXMATCH
-      const rowRegu_PO = String(row[poReguIdx] || "").toUpperCase().trim();
-
-      allUlps.forEach(targetUlp => {
-        const expectedRegu = getExpectedRegu(targetUlp);
-        // Logic for PO: REGEXMATCH(D, targetUlp) AND Regu == expectedRegu
-        if (rowColD_PO.includes(targetUlp.toUpperCase()) && rowRegu_PO === expectedRegu) {
-          if (!ulpPoTasks.has(targetUlp)) ulpPoTasks.set(targetUlp, new Map());
-          ulpPoTasks.get(targetUlp)!.set(taskId, (ulpPoTasks.get(targetUlp)!.get(taskId) || false) || isCctv);
-        }
-      });
     });
 
 
@@ -918,8 +952,13 @@ export class GoogleSheetsService {
       };
     });
 
-    // Sort ULP by PO CCTV descending
-    ulpPerformance.sort((a, b) => b.totalPoPakaiCctv - a.totalPoPakaiCctv);
+    // Sort ULP by predefined order
+    ulpPerformance.sort((a, b) => {
+      const idxA = allUlpsOrder.indexOf(a.ulp);
+      const idxB = allUlpsOrder.indexOf(b.ulp);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      return a.ulp.localeCompare(b.ulp);
+    });
 
     return {
       summary: {
@@ -954,8 +993,12 @@ export class GoogleSheetsService {
           .map(([name, count]) => ({ name, count }))
           .sort((a, b) => b.count - a.count)
           .slice(0, 10),
-        ulpDistribution: Array.from(ulpWoStatsMap.entries())
+        ulpDistribution: Array.from(ulpWoOverSlaStatsMap.entries())
           .map(([name, stats]) => ({ name, value: stats.total }))
+          .filter(item => {
+            if (!selectedUlp || selectedUlp === "ALL") return true;
+            return standardizeUlpName(item.name) === standardizeUlpName(selectedUlp);
+          })
           .sort((a, b) => b.value - a.value),
       },
       officerPerformance: mappedCctvUsage.map(u => ({
@@ -973,9 +1016,12 @@ export class GoogleSheetsService {
         let officerRatings: OfficerRating[] = [];
         let totalFeedbackCount = 0;
         let weightedRatingSum = 0;
+        const targetUlpFilter = selectedUlp && selectedUlp !== "ALL" ? standardizeUlpName(selectedUlp) : null;
 
         // Process based on aggregated stats from WO sheet filtered by ULP unique names
         officerRatingStats.forEach((stats) => {
+          if (targetUlpFilter && standardizeUlpName(stats.ulp) !== targetUlpFilter) return;
+
           const ratedCount = stats.r5 + stats.r34 + stats.r12;
           totalFeedbackCount += ratedCount;
           weightedRatingSum += (stats.r5 * 5) + (stats.r34 * 3.5) + (stats.r12 * 1.5);
@@ -1076,7 +1122,7 @@ export class GoogleSheetsService {
         };
       })(),
       cctvUsage: mappedCctvUsage,
-      rawWoRows: filteredWoRows,
+      rawWoRows: rawWoRowsFull,
       rawPoRows: filteredPoRows,
       woHeaders: woRows[woHeaderIdx] || [],
       poHeaders: poRows[poHeaderIdx] || [],

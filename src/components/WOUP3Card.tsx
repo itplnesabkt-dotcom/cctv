@@ -5,9 +5,10 @@ import { formatNumber } from '../lib/utils';
 interface WOUP3CardProps {
   totalWo: number;
   totalWoCctv: number;
+  onDetailClick?: (isCctv: boolean) => void;
 }
 
-export const WOUP3Card: React.FC<WOUP3CardProps> = ({ totalWo, totalWoCctv }) => {
+export const WOUP3Card: React.FC<WOUP3CardProps> = ({ totalWo, totalWoCctv, onDetailClick }) => {
   const percent = totalWo > 0 ? Math.round((totalWoCctv / totalWo) * 100) : 0;
 
   return (
@@ -25,7 +26,10 @@ export const WOUP3Card: React.FC<WOUP3CardProps> = ({ totalWo, totalWoCctv }) =>
       <div className="p-4 flex flex-col gap-3">
         {/* Row 1: Total WO & WO CCTV */}
         <div className="grid grid-cols-2 gap-4">
-          <div className="flex items-center gap-3">
+          <div 
+            className="flex items-center gap-3 cursor-pointer hover:bg-black/5 p-1 rounded transition-colors"
+            onClick={() => onDetailClick?.(false)}
+          >
             <div className="bg-blue-50 p-2 rounded-lg text-blue-600">
               <ClipboardList size={18} />
             </div>
@@ -35,7 +39,10 @@ export const WOUP3Card: React.FC<WOUP3CardProps> = ({ totalWo, totalWoCctv }) =>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div 
+            className="flex items-center gap-3 cursor-pointer hover:bg-black/5 p-1 rounded transition-colors"
+            onClick={() => onDetailClick?.(true)}
+          >
             <div className="bg-brand-primary/5 p-2 rounded-lg text-brand-primary">
               <Camera size={18} />
             </div>

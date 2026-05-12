@@ -5,9 +5,10 @@ import { formatNumber } from '../lib/utils';
 
 interface ULPPOStatsCardProps {
   ulpData: ULPPerformance[];
+  onDetailClick?: (ulp: string, isCctv: boolean) => void;
 }
 
-export const ULPPOStatsCard: React.FC<ULPPOStatsCardProps> = ({ ulpData }) => {
+export const ULPPOStatsCard: React.FC<ULPPOStatsCardProps> = ({ ulpData, onDetailClick }) => {
   // Define the specific order requested
   const requestedOrder = [
     "BUKITTINGGI",
@@ -53,11 +54,17 @@ export const ULPPOStatsCard: React.FC<ULPPOStatsCardProps> = ({ ulpData }) => {
             </div>
             
             <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col">
+              <div 
+                className="flex flex-col cursor-pointer hover:bg-black/5 p-1 rounded transition-colors"
+                onClick={() => onDetailClick?.(item.ulp, false)}
+              >
                 <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">PO TOTAL</span>
                 <span className="text-lg font-black text-gray-700 leading-none">{formatNumber(item.jumlahPoTotal)}</span>
               </div>
-              <div className="flex flex-col">
+              <div 
+                className="flex flex-col cursor-pointer hover:bg-black/5 p-1 rounded transition-colors"
+                onClick={() => onDetailClick?.(item.ulp, true)}
+              >
                 <span className="text-[8px] font-bold text-brand-primary uppercase tracking-tighter">PO CCTV</span>
                 <div className="flex items-center gap-1">
                   <Camera size={10} className="text-brand-primary" />
