@@ -108,57 +108,108 @@ export class GoogleSheetsService {
       }
     }
 
-    cleanStr = cleanStr.replace(/^[a-z]+,\s*/i, "");
+    cleanStr = cleanStr.replace(/^[a-z]+,\s*/i, "")
+      .replace(/[,\(\)\\]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
     
-    const [datePart, timePart] = cleanStr.split(/\s+/);
-    if (!datePart) return null;
+    if (!cleanStr) return null;
 
-    const dateParts = datePart.split(/[-/.]+/).filter(p => p.length > 0);
+    // Try to isolate time if it looks like HH:MM:SS or HH:MM at the end
+    // Be careful with dots which might be date separators
+    let timePart: string | undefined;
+    const timeMatch = cleanStr.match(/\s+(\d{1,2}[:.]\d{1,2}([:.]\d{1,2})?(\s*?([AaPp][Mm]))?)$/);
+    if (timeMatch) {
+      timePart = timeMatch[1];
+      cleanStr = cleanStr.substring(0, cleanStr.length - timePart.length).trim();
+    } else {
+      const colonTimeMatch = cleanStr.match(/(\d{1,2}:\d{1,2}(:\d{1,2})?(\s*?([AaPp][Mm]))?)$/);
+      if (colonTimeMatch) {
+        timePart = colonTimeMatch[0];
+        cleanStr = cleanStr.substring(0, cleanStr.length - timePart.length).trim();
+      }
+    }
+
+    const datePart = cleanStr;
+    const dateParts = datePart.split(/[-/ .]+/).filter(p => p.length > 0);
+    
+    let d = 1, m = 1, y = 1970;
+
+    const months: Record<string, number> = {
+      'jan': 0, 'januari': 0, 'january': 0, '01': 0,
+      'feb': 1, 'februari': 1, 'february': 1, '02': 1,
+      'mar': 2, 'maret': 2, 'march': 2, 'mrt': 2, '03': 2,
+      'apr': 3, 'april': 3, '04': 3,
+      'mei': 4, 'may': 4, '05': 4,
+      'jun': 5, 'juni': 5, 'june': 5, '06': 5,
+      'jul': 6, 'juli': 6, 'july': 6, '07': 6,
+      'agu': 7, 'agustus': 7, 'aug': 7, 'august': 7, 'agt': 7, '08': 7, 'agh': 7,
+      'sep': 8, 'september': 8, '09': 8,
+      'okt': 9, 'oktober': 9, 'oct': 9, 'october': 9, '10': 9,
+      'nov': 10, 'november': 10, '11': 10,
+      'des': 11, 'desember': 11, 'dec': 11, 'december': 11, '12': 11
+    };
+
     if (dateParts.length >= 3) {
-      let p1 = parseInt(dateParts[0], 10);
-      let p2Str = dateParts[1].toLowerCase();
-      let p3 = parseInt(dateParts[2], 10);
-      
-      let d = p1;
-      let m = parseInt(p2Str, 10);
-      let y = p3;
+      const p1 = dateParts[0].toLowerCase();
+      const p2 = dateParts[1].toLowerCase();
+      const p3 = dateParts[2].toLowerCase();
 
-      if (p1 > 31) {
-        y = p1;
-        m = parseInt(p2Str, 10);
-        d = parseInt(dateParts[2], 10);
-      } else if (y < 100) {
-        y = 2000 + y;
+      // Case 1: YYYY MM DD or YYYY DD MM
+      if (p1.length === 4 && !isNaN(parseInt(p1))) {
+        y = parseInt(p1);
+        if (months[p2] !== undefined) {
+          m = months[p2] + 1;
+          d = parseInt(p3);
+        } else {
+          m = parseInt(p2);
+          d = parseInt(p3);
+        }
+      } 
+      // Case 2: DD MM YYYY or MM DD YYYY
+      else if (p3.length === 4 || p3.length === 2) {
+        y = parseInt(p3);
+        if (y < 100) y = (y > 70 ? 1900 : 2000) + y;
+
+        if (months[p1] !== undefined) {
+          // Month Name first: Jan 13 2026
+          m = months[p1] + 1;
+          d = parseInt(p2);
+        } else if (months[p2] !== undefined) {
+          // Month Name in middle: 13 Jan 2026
+          m = months[p2] + 1;
+          d = parseInt(p1);
+        } else {
+          // Numeric: 13/05/2026
+          d = parseInt(p1);
+          m = parseInt(p2);
+        }
       }
 
-      if (isNaN(m)) {
-        const months: Record<string, number> = {
-          'jan': 0, 'januari': 0, 'january': 0,
-          'feb': 1, 'februari': 1, 'february': 1,
-          'mar': 2, 'maret': 2, 'march': 2,
-          'apr': 3, 'april': 3, 'mei': 4, 'may': 4,
-          'jun': 5, 'juni': 5, 'june': 5,
-          'jul': 6, 'juli': 6, 'july': 6,
-          'agu': 7, 'agustus': 7, 'aug': 7, 'august': 7, 'agt': 7,
-          'sep': 8, 'september': 8, 'okt': 9, 'oktober': 9, 'oct': 9, 'october': 9,
-          'nov': 10, 'november': 10, 'des': 11, 'desember': 11, 'dec': 11, 'december': 11,
-          'mrt': 2, 'agh': 7
-        };
-        if (months[p2Str] !== undefined) m = months[p2Str] + 1;
-      }
-
+      // Final validity & swap check if needed
       if (m > 12 && d <= 12) {
         const tmp = m; m = d; d = tmp;
       }
 
-      if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+      if (!isNaN(d) && !isNaN(m) && !isNaN(y) && m > 0 && m <= 12 && d > 0 && d <= 31) {
         const date = new Date(y, m - 1, d);
         if (date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d) {
           if (timePart) {
-            const tParts = timePart.split(/[:.]+/);
+            const isPM = /pm/i.test(timePart);
+            const isAM = /am/i.test(timePart);
+            const tParts = timePart.replace(/[apm\s]/ig, "").split(/[:.]+/);
             if (tParts.length >= 2) {
-              date.setHours(parseInt(tParts[0], 10), parseInt(tParts[1], 10), tParts[2] ? parseInt(tParts[2], 10) : 0);
+              let hh = parseInt(tParts[0], 10);
+              let mm = parseInt(tParts[1], 10);
+              let ss = tParts[2] ? parseInt(tParts[2], 10) : 0;
+              
+              if (hh < 12 && isPM) hh += 12;
+              if (hh === 12 && isAM) hh = 0;
+              
+              date.setHours(hh, mm, ss);
             }
+          } else {
+            date.setHours(0, 0, 0, 0);
           }
           return date;
         }
@@ -196,8 +247,11 @@ export class GoogleSheetsService {
           idx = row.findIndex(h => h === "cctv" || h.includes("cctv"));
         } else if (t === "ulp") {
           idx = row.findIndex(h => h === "ulp" || h.includes("ulp") || h === "unit" || h === "posko" || h.includes("posko"));
-        } else if (t === "tanggal") {
-          idx = row.findIndex(h => h.includes("tgl lapor") || h.includes("tgl lap") || h.includes("tanggal") || h.includes("date") || h.includes("tgl"));
+        } else if (t === "tanggal" || t === "tgl lapor" || t === "tgl") {
+          idx = row.indexOf("tgl");
+          if (idx === -1) {
+            idx = row.findIndex(h => h === "tgl" || h === "tanggal" || h.includes("tgl lapor") || h.includes("tgl lap") || h.includes("tanggal") || h.includes("date") || h.includes("tgl"));
+          }
         } else if (t === "no laporan" || t === "no tugas") {
           idx = row.findIndex(h => (h.includes("no") && (h.includes("lap") || h.includes("tug"))) || h === "id" || h.includes("laporan id") || h.includes("id laporan") || h.includes("task id") || h.includes("id tugas"));
         } else if (t === "ulp" || t === "ulp id" || t === "ulpid") {
@@ -208,6 +262,20 @@ export class GoogleSheetsService {
           idx = row.findIndex(h => h.includes("regu") || h.includes("team"));
         } else if (t === "rating") {
           idx = row.findIndex(h => h === "rating" || h.includes("bintang") || h.includes("skor") || h.startsWith("star"));
+        } else if (t === "check in petugas") {
+          idx = row.findIndex(h => h.includes("check in") && h.includes("petugas"));
+        } else if (t === "tgl penugasan regu") {
+          idx = row.findIndex(h => h === "tgl penugasan regu" || (h.includes("tgl") && (h.includes("penugasan") || h.includes("assign"))));
+        } else if (t === "tgl dalam perjalanan") {
+          idx = row.findIndex(h => h === "tgl dalam perjalanan" || (h.includes("tgl") && h.includes("perjalanan")));
+        } else if (t === "tgl nyala") {
+          idx = row.findIndex(h => h === "tgl nyala" || (h.includes("tgl") && h.includes("nyala")));
+        } else if (t === "check out petugas") {
+          idx = row.findIndex(h => h.includes("check out") && h.includes("petugas"));
+        } else if (t === "tgl pengerjaan") {
+          idx = row.findIndex(h => h.includes("tgl") && h.includes("pengerjaan"));
+        } else if (t === "tgl selesai") {
+          idx = row.findIndex(h => h.includes("tgl") && h.includes("selesai"));
         } else if (t === "sumber laporan") {
           idx = row.findIndex(h => h.includes("sumber") && (h.includes("lapor") || h.includes("src")));
         } else if (t === "rpt") {
@@ -406,11 +474,16 @@ export class GoogleSheetsService {
     };
 
     // 3. Aggregate WO data
-    const woTargets = ["nama petugas", "cctv", "tanggal", "no laporan", "nama regu", "ulp", "tgl pengerjaan", "tgl selesai", "sumber lapor", "pelapor", "shift", "rpt", "rct", "durasi wo", "posko", "rating", "poskoid", "apkt status"];
+    const woTargets = [
+      "nama petugas", "cctv", "tgl", "no laporan", "nama regu", 
+      "ulp", "tgl pengerjaan", "tgl selesai", "sumber lapor", "pelapor", 
+      "shift", "rpt", "rct", "durasi wo", "posko", "rating", "poskoid", "apkt status",
+      "check in petugas", "tgl penugasan regu", "tgl dalam perjalanan", "tgl nyala", "check out petugas"
+    ];
     const { headerRowIdx: woHeaderIdx, colIndices: woCols } = this.findHeaderAndCols(woRows, woTargets);
     const woNameIdx = woCols[0] !== -1 ? woCols[0] : 10;
     const woCctvIdx = woCols[1] !== -1 ? woCols[1] : 42;
-    const woDateIdx = woCols[2] !== -1 ? woCols[2] : (woCols[6] !== -1 ? woCols[6] : 2); 
+    const woDateIdx = woCols[2] !== -1 ? woCols[2] : (woCols[19] !== -1 ? woCols[19] : (woCols[6] !== -1 ? woCols[6] : 2)); 
     const woIdIdx = woCols[3] !== -1 ? woCols[3] : 13;
     const woReguIdx = woCols[4] !== -1 ? woCols[4] : 9;
     const woUlpIdx = woCols[5];
@@ -425,7 +498,29 @@ export class GoogleSheetsService {
     const woPoskoIdx = woCols[14];
     const woRatingIdx = woCols[15];
     const woPoskoidIdx = woCols[16];
-    const woApktStatusIdx = woCols[17] !== -1 ? woCols[17] : 39; // Column AN
+    const woApktStatusIdx = woCols[17] !== -1 ? woCols[17] : 39;
+    const woCheckInIdx = woCols[18];
+    const woTglPenugasanIdx = woCols[19];
+    const woTglPerjalananIdx = woCols[20];
+    const woTglNyalaIdx = woCols[21];
+    const woCheckOutIdx = woCols[22];
+
+    const dateTimeIndices = [
+      woDateIdx, woTglPengerjaanIdx, woTglSelesaiIdx, 
+      woCheckInIdx, woTglPenugasanIdx, woTglPerjalananIdx, 
+      woTglNyalaIdx, woCheckOutIdx
+    ].filter(idx => idx !== -1);
+
+    const formatDateTime = (date: Date | null) => {
+      if (!date) return "";
+      const d = date.getDate().toString().padStart(2, '0');
+      const m = (date.getMonth() + 1).toString().padStart(2, '0');
+      const y = date.getFullYear();
+      const h = date.getHours().toString().padStart(2, '0');
+      const min = date.getMinutes().toString().padStart(2, '0');
+      const s = date.getSeconds().toString().padStart(2, '0');
+      return `${d}/${m}/${y} ${h}:${min}:${s}`;
+    };
 
     const woDataStart = woHeaderIdx !== -1 ? woHeaderIdx + 1 : 0;
     
@@ -547,6 +642,18 @@ export class GoogleSheetsService {
 
       const reguValue = woReguIdx !== -1 && woReguIdx < row.length ? String(row[woReguIdx] || "").trim() : "";
 
+      // Format date/time columns for raw output
+      const rowToProcess = [...row];
+      dateTimeIndices.forEach(idx => {
+        if (idx < rowToProcess.length) {
+          const val = String(rowToProcess[idx] || "").trim();
+          if (val) {
+            const parsed = this.parseSheetDate(val);
+            if (parsed) rowToProcess[idx] = formatDateTime(parsed);
+          }
+        }
+      });
+
       // Performance stats (count all reports as requested)
       const nameKeyForRaw = this.cleanName(nameRaw);
       if (nameKeyForRaw && nameKeyForRaw !== "NAMAPETUGAS" && nameKeyForRaw !== "NAME") {
@@ -557,14 +664,14 @@ export class GoogleSheetsService {
       // Add to Over SLA RPT list (include duplicates for the table specifically)
       const isUp3 = isUp3Regu(reguValue);
       if (isWithinUlp) {
-        rawWoRowsFull.push([...row]);
+        rawWoRowsFull.push([...rowToProcess]);
       }
       
       if (isWithinUlp && isUp3 && isSelesai) {
         if (rpt >= 30) {
           woOverSlaRptList.push([
             rawReportId.toUpperCase(),
-            rowDate ? rowDate.toLocaleString('id-ID') : rowDateRaw,
+            rowToProcess[woDateIdx] || rowDateRaw,
             properName,
             Math.round(rpt * 100) / 100,
             rctVal >= 0 ? Math.round(rctVal * 100) / 100 : '-',
@@ -627,7 +734,7 @@ export class GoogleSheetsService {
           isPlnMobile,
           isWithinUlp,
           apktStatus,
-          rawRow: [...row]
+          rawRow: [...rowToProcess]
         });
       }
     });
@@ -793,11 +900,11 @@ export class GoogleSheetsService {
     });
 
     // 4. Aggregate PO data
-    const poTargets = ["nama petugas", "cctv", "tanggal", "no tugas", "nama regu", "ulp", "posko"];
+    const poTargets = ["nama petugas", "cctv", "tgl", "no tugas", "nama regu", "ulp", "posko"];
     const { headerRowIdx: poHeaderIdx, colIndices: poCols } = this.findHeaderAndCols(poRows, poTargets);
     const poNameIdx = poCols[0] !== -1 ? poCols[0] : 10;
     const poCctvIdx = poCols[1] !== -1 ? poCols[1] : 24;
-    const poDateIdx = 25; 
+    const poDateIdx = poCols[2] !== -1 ? poCols[2] : 25; 
     const poIdIdx = poCols[3] !== -1 ? poCols[3] : 4;
     const poReguIdx = poCols[4] !== -1 ? poCols[4] : 8;
     const poUlpIdx = poCols[5];
