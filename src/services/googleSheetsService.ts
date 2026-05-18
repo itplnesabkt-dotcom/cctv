@@ -108,7 +108,7 @@ export class GoogleSheetsService {
       }
     }
 
-    // 0.5 Remove leading day names (e.g. "Monday, ", "Mon ", "Senin ")
+    // 2. Remove leading day names and clean separators
     cleanStr = cleanStr.replace(/^[a-z]{3,}[,\s]*/i, "")
       .replace(/[,\(\)\\]/g, " ")
       .replace(/\s+/g, " ")
@@ -116,27 +116,25 @@ export class GoogleSheetsService {
     
     if (!cleanStr) return null;
 
-    // 1. Try to isolate time (e.g., "10:00:00", "10.00.00", "10:00 PM", "10:00:00 WIB")
+    // 3. Try to isolate time (e.g., "19:44:56", "10:00 PM", "10.00.00")
     let timePart: string | undefined;
     
-    // Improved time regex: look for HH:MM or HH:MM:SS with optional AM/PM and optional trailing timezone like WIB
-    // We favor colons as they are unambiguous times. Dots are fallback.
-    const timeMatch = cleanStr.match(/(\d{1,2}[:]\d{1,2}([:]\d{1,2})?(\s*?([AaPp][Mm]))?)(\s*[a-zA-Z]+)?$/i) || 
-                      cleanStr.match(/\s+(\d{1,2}[:.]\d{1,2}([:.]\d{1,2})?(\s*?([AaPp][Mm]))?)(\s*[a-zA-Z]+)?$/i);
+    // Check for time at the end (preceded by space or specifically formatted with colons)
+    const timeMatch = cleanStr.match(/\s+(\d{1,2}[:.]\d{1,2}([:.]\d{1,2})?(\s*?([AaPp][Mm]))?)(\s*[a-zA-Z]{2,})?$/i) || 
+                      cleanStr.match(/(\d{1,2}[:]\d{1,2}([:.]\d{1,2})?(\s*?([AaPp][Mm]))?)(\s*[a-zA-Z]{2,})?$/i);
     
     if (timeMatch) {
       const fullMatch = timeMatch[0];
       timePart = timeMatch[1];
       if (timePart) {
-        cleanStr = cleanStr.replace(fullMatch, "").replace(/\s+/g, " ").trim();
+        cleanStr = cleanStr.replace(fullMatch, "").trim();
       }
     }
 
-    const datePart = cleanStr;
-    const dateParts = datePart.split(/[-/ .]+/).filter(p => p.length > 0);
+    // 4. Extract numeric / month parts from the remaining date string
+    const dateParts = cleanStr.split(/[-/ .]+/).filter(p => p.length > 0);
     
     let d = 1, m = 1, y = 1970;
-
     const months: Record<string, number> = {
       'jan': 0, 'januari': 0, 'january': 0, '01': 0,
       'feb': 1, 'februari': 1, 'february': 1, '02': 1,
@@ -157,75 +155,56 @@ export class GoogleSheetsService {
       const p2 = dateParts[1].toLowerCase();
       const p3 = dateParts[2].toLowerCase();
 
-      // Case 1: YYYY MM DD or YYYY DD MM
+      // Case 1: YYYY MM DD
       if (p1.length === 4 && !isNaN(parseInt(p1))) {
         y = parseInt(p1);
-        if (months[p2] !== undefined) {
-          m = months[p2] + 1;
-          d = parseInt(p3);
-        } else {
-          m = parseInt(p2);
-          d = parseInt(p3);
-        }
+        if (months[p2] !== undefined) { m = months[p2] + 1; d = parseInt(p3); }
+        else { m = parseInt(p2); d = parseInt(p3); }
       } 
       // Case 2: DD MM YYYY or MM DD YYYY
-      else if (p3.length === 4 || p3.length === 2) {
+      else {
         y = parseInt(p3);
-        if (y < 100) y = (y > 70 ? 1900 : 2000) + y;
-
-        if (months[p1] !== undefined) {
-          // Month Name first: Jan 13 2026
-          m = months[p1] + 1;
-          d = parseInt(p2);
-        } else if (months[p2] !== undefined) {
-          // Month Name in middle: 13 Jan 2026
-          m = months[p2] + 1;
-          d = parseInt(p1);
-        } else {
-          // Numeric: 13/05/2026
-          d = parseInt(p1);
-          m = parseInt(p2);
-        }
+        if (p3.length === 2) y = (y > 70 ? 1900 : 2000) + y;
+        
+        if (months[p1] !== undefined) { m = months[p1] + 1; d = parseInt(p2); }
+        else if (months[p2] !== undefined) { m = months[p2] + 1; d = parseInt(p1); }
+        else { d = parseInt(p1); m = parseInt(p2); }
       }
 
-      // Final validity & swap check if needed
-      if (m > 12 && d <= 12) {
-        const tmp = m; m = d; d = tmp;
+      // Hybrid swap if month > 12
+      if (m > 12 && d <= 12) { const tmp = m; m = d; d = tmp; }
+
+      let hh = 0, mm = 0, ss = 0;
+      if (timePart) {
+        const isPM = /pm/i.test(timePart);
+        const isAM = /am/i.test(timePart);
+        const tParts = timePart.replace(/[apm\s]/ig, "").split(/[:.]+/).filter(x => x.length > 0);
+        if (tParts.length >= 2) {
+          hh = parseInt(tParts[0], 10);
+          mm = parseInt(tParts[1], 10);
+          ss = tParts[2] ? parseInt(tParts[2], 10) : 0;
+          if (hh < 12 && isPM) hh += 12;
+          if (hh === 12 && isAM) hh = 0;
+        }
+      } else if (dateParts.length >= 5) {
+        // Handle case where time was part of date splitting: DD MM YYYY HH MM SS
+        const ph = parseInt(dateParts[3]);
+        const pm = parseInt(dateParts[4]);
+        const ps = dateParts[5] ? parseInt(dateParts[5]) : 0;
+        if (!isNaN(ph) && !isNaN(pm) && ph < 24 && pm < 60) {
+          hh = ph; mm = pm; ss = ps;
+        }
       }
 
       if (!isNaN(d) && !isNaN(m) && !isNaN(y) && m > 0 && m <= 12 && d > 0 && d <= 31) {
-        const date = new Date(y, m - 1, d);
-        if (date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d) {
-          if (timePart) {
-            const isPM = /pm/i.test(timePart);
-            const isAM = /am/i.test(timePart);
-            const tParts = timePart.replace(/[apm\s]/ig, "").split(/[:.]+/);
-            if (tParts.length >= 2) {
-              let hh = parseInt(tParts[0], 10);
-              let mm = parseInt(tParts[1], 10);
-              let ss = tParts[2] ? parseInt(tParts[2], 10) : 0;
-              
-              if (hh < 12 && isPM) hh += 12;
-              if (hh === 12 && isAM) hh = 0;
-              
-              date.setHours(hh, mm, ss);
-            }
-          } else {
-            date.setHours(0, 0, 0, 0);
-          }
-          return date;
-        }
+        const date = new Date(y, m - 1, d, hh, mm, ss);
+        if (!isNaN(date.getTime())) return date;
       }
     }
 
-    const dObj = new Date(cleanStr);
-    if (!isNaN(dObj.getTime())) {
-      const isoMatch = cleanStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-      if (isoMatch) {
-        return new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, parseInt(isoMatch[3]));
-      }
-      return dObj;
-    }
+    // Default JS Date parsing for everything else
+    const dObj = new Date(dateStr);
+    if (!isNaN(dObj.getTime())) return dObj;
     
     return null;
   }
@@ -250,7 +229,9 @@ export class GoogleSheetsService {
         } else if (t === "ulp") {
           idx = row.findIndex(h => h === "ulp" || h.includes("ulp") || h === "unit" || h === "posko" || h.includes("posko"));
         } else if (t === "tgl lapor") {
-          idx = row.findIndex(h => h === "tgl lapor" || h.includes("tgl lapor") || h.includes("tgl lap"));
+          idx = row.findIndex(h => h === "tgl lapor" || h.includes("tgl lapor"));
+        } else if (t === "tgl lap") {
+          idx = row.findIndex(h => h === "tgl lap" || h.includes("tgl lap"));
         } else if (t === "tgl") {
           idx = row.indexOf("tgl");
           if (idx === -1) idx = row.findIndex(h => h === "tgl");
@@ -483,7 +464,7 @@ export class GoogleSheetsService {
       "ulp", "tgl pengerjaan", "tgl selesai", "sumber lapor", "pelapor", 
       "shift", "rpt", "rct", "durasi wo", "posko", "rating", "poskoid", "apkt status",
       "check in petugas", "tgl penugasan regu", "tgl dalam perjalanan", "tgl nyala", "check out petugas",
-      "tgl lapor"
+      "tgl lapor", "tgl lap"
     ];
     const { headerRowIdx: woHeaderIdx, colIndices: woCols } = this.findHeaderAndCols(woRows, woTargets);
     const woNameIdx = woCols[0] !== -1 ? woCols[0] : 10;
@@ -509,7 +490,8 @@ export class GoogleSheetsService {
     const woTglPerjalananIdx = woCols[20];
     const woTglNyalaIdx = woCols[21];
     const woCheckOutIdx = woCols[22];
-    const woTglLaporIdx = woCols[23] !== -1 ? woCols[23] : woDateIdx;
+    const woTglLapIdx = woCols[24];
+    const woTglLaporIdx = woTglLapIdx !== -1 ? woTglLapIdx : (woCols[23] !== -1 ? woCols[23] : woDateIdx);
 
     const dateTimeIndices = [
       woDateIdx, woTglPengerjaanIdx, woTglSelesaiIdx, 
@@ -673,11 +655,13 @@ export class GoogleSheetsService {
         rawWoRowsFull.push([...rowToProcess]);
       }
       
+      const tglLaporVal = rowToProcess[woTglLaporIdx] || rowToProcess[woDateIdx] || rowDateRaw;
+
       if (isWithinUlp && isUp3 && isSelesai) {
         if (rpt >= 30) {
           woOverSlaRptList.push([
             rawReportId.toUpperCase(),
-            rowToProcess[woTglLaporIdx] || rowToProcess[woDateIdx] || rowDateRaw,
+            tglLaporVal,
             properName,
             Math.round(rpt * 100) / 100,
             rctVal >= 0 ? Math.round(rctVal * 100) / 100 : '-',
