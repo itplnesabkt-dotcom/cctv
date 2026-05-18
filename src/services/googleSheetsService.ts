@@ -108,25 +108,27 @@ export class GoogleSheetsService {
       }
     }
 
-    cleanStr = cleanStr.replace(/^[a-z]+,\s*/i, "")
+    // 0.5 Remove leading day names (e.g. "Monday, ", "Mon ", "Senin ")
+    cleanStr = cleanStr.replace(/^[a-z]{3,}[,\s]*/i, "")
       .replace(/[,\(\)\\]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
     
     if (!cleanStr) return null;
 
-    // Try to isolate time if it looks like HH:MM:SS or HH:MM at the end
-    // Be careful with dots which might be date separators
+    // 1. Try to isolate time (e.g., "10:00:00", "10.00.00", "10:00 PM", "10:00:00 WIB")
     let timePart: string | undefined;
-    const timeMatch = cleanStr.match(/\s+(\d{1,2}[:.]\d{1,2}([:.]\d{1,2})?(\s*?([AaPp][Mm]))?)$/);
+    
+    // Improved time regex: look for HH:MM or HH:MM:SS with optional AM/PM and optional trailing timezone like WIB
+    // We favor colons as they are unambiguous times. Dots are fallback.
+    const timeMatch = cleanStr.match(/(\d{1,2}[:]\d{1,2}([:]\d{1,2})?(\s*?([AaPp][Mm]))?)(\s*[a-zA-Z]+)?$/i) || 
+                      cleanStr.match(/\s+(\d{1,2}[:.]\d{1,2}([:.]\d{1,2})?(\s*?([AaPp][Mm]))?)(\s*[a-zA-Z]+)?$/i);
+    
     if (timeMatch) {
+      const fullMatch = timeMatch[0];
       timePart = timeMatch[1];
-      cleanStr = cleanStr.substring(0, cleanStr.length - timePart.length).trim();
-    } else {
-      const colonTimeMatch = cleanStr.match(/(\d{1,2}:\d{1,2}(:\d{1,2})?(\s*?([AaPp][Mm]))?)$/);
-      if (colonTimeMatch) {
-        timePart = colonTimeMatch[0];
-        cleanStr = cleanStr.substring(0, cleanStr.length - timePart.length).trim();
+      if (timePart) {
+        cleanStr = cleanStr.replace(fullMatch, "").replace(/\s+/g, " ").trim();
       }
     }
 
@@ -247,11 +249,13 @@ export class GoogleSheetsService {
           idx = row.findIndex(h => h === "cctv" || h.includes("cctv"));
         } else if (t === "ulp") {
           idx = row.findIndex(h => h === "ulp" || h.includes("ulp") || h === "unit" || h === "posko" || h.includes("posko"));
-        } else if (t === "tanggal" || t === "tgl lapor" || t === "tgl") {
+        } else if (t === "tgl lapor") {
+          idx = row.findIndex(h => h === "tgl lapor" || h.includes("tgl lapor") || h.includes("tgl lap"));
+        } else if (t === "tgl") {
           idx = row.indexOf("tgl");
-          if (idx === -1) {
-            idx = row.findIndex(h => h === "tgl" || h === "tanggal" || h.includes("tgl lapor") || h.includes("tgl lap") || h.includes("tanggal") || h.includes("date") || h.includes("tgl"));
-          }
+          if (idx === -1) idx = row.findIndex(h => h === "tgl");
+        } else if (t === "tanggal") {
+          idx = row.findIndex(h => h === "tanggal" || h.includes("tanggal") || h.includes("date") || h.includes("tgl"));
         } else if (t === "no laporan" || t === "no tugas") {
           idx = row.findIndex(h => (h.includes("no") && (h.includes("lap") || h.includes("tug"))) || h === "id" || h.includes("laporan id") || h.includes("id laporan") || h.includes("task id") || h.includes("id tugas"));
         } else if (t === "ulp" || t === "ulp id" || t === "ulpid") {
@@ -478,7 +482,8 @@ export class GoogleSheetsService {
       "nama petugas", "cctv", "tgl", "no laporan", "nama regu", 
       "ulp", "tgl pengerjaan", "tgl selesai", "sumber lapor", "pelapor", 
       "shift", "rpt", "rct", "durasi wo", "posko", "rating", "poskoid", "apkt status",
-      "check in petugas", "tgl penugasan regu", "tgl dalam perjalanan", "tgl nyala", "check out petugas"
+      "check in petugas", "tgl penugasan regu", "tgl dalam perjalanan", "tgl nyala", "check out petugas",
+      "tgl lapor"
     ];
     const { headerRowIdx: woHeaderIdx, colIndices: woCols } = this.findHeaderAndCols(woRows, woTargets);
     const woNameIdx = woCols[0] !== -1 ? woCols[0] : 10;
@@ -504,11 +509,12 @@ export class GoogleSheetsService {
     const woTglPerjalananIdx = woCols[20];
     const woTglNyalaIdx = woCols[21];
     const woCheckOutIdx = woCols[22];
+    const woTglLaporIdx = woCols[23] !== -1 ? woCols[23] : woDateIdx;
 
     const dateTimeIndices = [
       woDateIdx, woTglPengerjaanIdx, woTglSelesaiIdx, 
       woCheckInIdx, woTglPenugasanIdx, woTglPerjalananIdx, 
-      woTglNyalaIdx, woCheckOutIdx
+      woTglNyalaIdx, woCheckOutIdx, woTglLaporIdx
     ].filter(idx => idx !== -1);
 
     const formatDateTime = (date: Date | null) => {
@@ -671,7 +677,7 @@ export class GoogleSheetsService {
         if (rpt >= 30) {
           woOverSlaRptList.push([
             rawReportId.toUpperCase(),
-            rowToProcess[woDateIdx] || rowDateRaw,
+            rowToProcess[woTglLaporIdx] || rowToProcess[woDateIdx] || rowDateRaw,
             properName,
             Math.round(rpt * 100) / 100,
             rctVal >= 0 ? Math.round(rctVal * 100) / 100 : '-',
