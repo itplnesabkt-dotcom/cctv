@@ -14,7 +14,8 @@ export class GoogleSheetsService {
       petugasRows: any[][],
       ulpRows: any[][],
       poskoRows: any[][],
-      ratingRows: any[][]
+      ratingRows: any[][],
+      anomaliSheetRows?: any[][]
     },
     startDate?: string,
     endDate?: string,
@@ -166,9 +167,30 @@ export class GoogleSheetsService {
         y = parseInt(p3);
         if (p3.length === 2) y = (y > 70 ? 1900 : 2000) + y;
         
-        if (months[p1] !== undefined) { m = months[p1] + 1; d = parseInt(p2); }
-        else if (months[p2] !== undefined) { m = months[p2] + 1; d = parseInt(p1); }
-        else { d = parseInt(p1); m = parseInt(p2); }
+        // Check if there is an explicit alpha month matched in months map
+        // This is safe even if both parts are numbers because we check with isNaN
+        const hasP1Month = months[p1] !== undefined && isNaN(parseInt(p1));
+        const hasP2Month = months[p2] !== undefined && isNaN(parseInt(p2));
+
+        if (hasP1Month) {
+          m = months[p1] + 1;
+          d = parseInt(p2);
+        } else if (hasP2Month) {
+          m = months[p2] + 1;
+          d = parseInt(p1);
+        } else {
+          // If both are numeric, check if it is a timestamp (usually contains time part with colon ":")
+          const isTimestamp = cleanStr.includes(":");
+          if (isTimestamp) {
+            // MM DD YYYY format for Google Form Timestamp
+            m = parseInt(p1);
+            d = parseInt(p2);
+          } else {
+            // DD MM YYYY format for manual/formula fields
+            d = parseInt(p1);
+            m = parseInt(p2);
+          }
+        }
       }
 
       // Hybrid swap if month > 12
@@ -322,7 +344,7 @@ export class GoogleSheetsService {
     const allRegusInUlp = new Map<string, string>(); // Regu -> ULP
 
     const now = Date.now();
-    let woRows: any[][], poRows: any[][], petugasRows: any[][], ulpRows: any[][], poskoRows: any[][], ratingRows: any[][];
+    let woRows: any[][], poRows: any[][], petugasRows: any[][], ulpRows: any[][], poskoRows: any[][], ratingRows: any[][], anomaliSheetRows: any[][] = [];
     const woOverSlaRptList: any[][] = [];
 
     // 1. DATA ACQUISITION (Cached or Fresh)
@@ -339,19 +361,28 @@ export class GoogleSheetsService {
       ulpRows = cached.ulpRows;
       poskoRows = cached.poskoRows;
       ratingRows = cached.ratingRows;
+      anomaliSheetRows = cached.anomaliSheetRows || [];
     } else {
-      [woRows, poRows, petugasRows, ulpRows, poskoRows, ratingRows] = await Promise.all([
+      const results = await Promise.all([
         this.fetchSheetDataRaw("WO"),
         this.fetchSheetDataRaw("PO"),
         this.petugasCache ? Promise.resolve(this.petugasCache) : this.fetchSheetDataRaw("PETUGAS").then(data => { this.petugasCache = data; return data; }),
         this.ulpCache ? Promise.resolve(this.ulpCache) : this.fetchSheetDataRaw("ULP").then(data => { this.ulpCache = data; return data; }),
         this.fetchSheetDataRaw("POSKO"),
         this.fetchSheetDataRaw("RATING"),
+        this.fetchSheetDataRaw("ANOMALI").catch(() => [] as any[][])
       ]);
+      woRows = results[0];
+      poRows = results[1];
+      petugasRows = results[2];
+      ulpRows = results[3];
+      poskoRows = results[4];
+      ratingRows = results[5];
+      anomaliSheetRows = results[6];
 
       if (woRows.length > 0 || poRows.length > 0) {
         this.rawDataCache = {
-          data: { woRows, poRows, petugasRows, ulpRows, poskoRows, ratingRows },
+          data: { woRows, poRows, petugasRows, ulpRows, poskoRows, ratingRows, anomaliSheetRows },
           startDate,
           endDate,
           timestamp: now
@@ -1057,6 +1088,258 @@ export class GoogleSheetsService {
       return a.ulp.localeCompare(b.ulp);
     });
 
+    // Anomaly Computation (Prefers data from the "ANOMALI" sheet if present, falls back to in-memory calculation)
+    let totalAnomali = 0;
+    let chronologyAnomaliesCount = 0;
+    let missingCheckInOutCount = 0;
+    let extremeDurationCount = 0;
+    let missingOfficerCount = 0;
+    const anomaliList: any[][] = [];
+    const anomaliUlpDistributionMap = new Map<string, number>();
+    const anomaliTypeDistributionMap = new Map<string, number>();
+    const anomaliOfficerDistributionMap = new Map<string, number>();
+
+    let hasActualAnomaliSheet = false;
+
+    if (anomaliSheetRows && anomaliSheetRows.length > 1) {
+      // Find headers in target sheet
+      const targets = ["No Laporan", "Tgl Lapor", "Nama Petugas", "ULP", "Jenis Anomali", "Deskripsi", "RPT", "RCT"];
+      const { headerRowIdx: sheetAnomaliHeaderIdx, colIndices: sheetAnomaliCols } = this.findHeaderAndCols(anomaliSheetRows, targets);
+      
+      // Always treat as valid sheet if present, with resilient fallback mappings
+      hasActualAnomaliSheet = true;
+      
+      if (sheetAnomaliHeaderIdx !== -1) {
+        const headerRow = anomaliSheetRows[sheetAnomaliHeaderIdx].map((h: any) => String(h || "").trim().toLowerCase());
+        
+        // Match columns loosely if they are not yet matched
+        if (sheetAnomaliCols[0] === -1) {
+          sheetAnomaliCols[0] = headerRow.findIndex(h => h.includes("no") || h.includes("id") || h.includes("laporan") || h.includes("tugas"));
+        }
+        if (sheetAnomaliCols[1] === -1) {
+          sheetAnomaliCols[1] = headerRow.findIndex(h => h.includes("tgl") || h.includes("tanggal") || h.includes("date") || h.includes("lapor"));
+        }
+        if (sheetAnomaliCols[2] === -1) {
+          sheetAnomaliCols[2] = headerRow.findIndex(h => h.includes("petugas") || h.includes("nama") || h.includes("name") || h.includes("officer"));
+        }
+        if (sheetAnomaliCols[3] === -1) {
+          sheetAnomaliCols[3] = headerRow.findIndex(h => h.includes("ulp") || h.includes("unit") || h.includes("posko"));
+        }
+        if (sheetAnomaliCols[4] === -1) {
+          sheetAnomaliCols[4] = headerRow.findIndex(h => h.includes("jenis") || h.includes("anomali") || h.includes("tipe") || h.includes("type"));
+        }
+        if (sheetAnomaliCols[5] === -1) {
+          sheetAnomaliCols[5] = headerRow.findIndex(h => h.includes("deskripsi") || h.includes("desc") || h.includes("keterangan") || h.includes("temuan") || h.includes("detail"));
+        }
+        if (sheetAnomaliCols[6] === -1) {
+          sheetAnomaliCols[6] = headerRow.findIndex(h => h === "rpt" || h.includes("rpt"));
+        }
+        if (sheetAnomaliCols[7] === -1) {
+          sheetAnomaliCols[7] = headerRow.findIndex(h => h === "rct" || h.includes("rct"));
+        }
+      }
+
+      // Hard positional fallbacks if some column headers are totally missing
+      if (sheetAnomaliCols[0] === -1) sheetAnomaliCols[0] = 0;
+      if (sheetAnomaliCols[1] === -1) sheetAnomaliCols[1] = 1;
+      if (sheetAnomaliCols[2] === -1) sheetAnomaliCols[2] = 2;
+      if (sheetAnomaliCols[3] === -1) sheetAnomaliCols[3] = 3;
+      if (sheetAnomaliCols[4] === -1) sheetAnomaliCols[4] = 4;
+      if (sheetAnomaliCols[5] === -1) sheetAnomaliCols[5] = 5;
+      if (sheetAnomaliCols[6] === -1) sheetAnomaliCols[6] = 6;
+      if (sheetAnomaliCols[7] === -1) sheetAnomaliCols[7] = 7;
+
+      // Find column index for "Anomali" (Column I) dynamically, fallback to index 8
+      let anomaliColIdx = 8;
+      if (sheetAnomaliHeaderIdx !== -1) {
+        const headerRow = anomaliSheetRows[sheetAnomaliHeaderIdx];
+        const foundIdx = headerRow.findIndex((h, idx) => {
+          const val = String(h || "").trim().toLowerCase();
+          return val === "anomali" || val.includes("kolom anomali") || (val.includes("anomali") && idx !== sheetAnomaliCols[4]);
+        });
+        if (foundIdx !== -1) {
+          anomaliColIdx = foundIdx;
+        }
+      }
+
+      const startIdx = sheetAnomaliHeaderIdx !== -1 ? sheetAnomaliHeaderIdx + 1 : 1;
+      const validRows = anomaliSheetRows.slice(startIdx);
+        
+        validRows.forEach((row) => {
+          if (row.length === 0 || !row[sheetAnomaliCols[0] !== -1 ? sheetAnomaliCols[0] : 0]) return; // Skip empty rows
+          
+          // Only include rows where the column I (index 8/anomaliColIdx) has value "Anomali" (case-insensitive)
+          const cellVal = anomaliColIdx < row.length ? String(row[anomaliColIdx] || "").trim().toLowerCase() : "";
+          if (cellVal !== "anomali") return;
+
+          const id = sheetAnomaliCols[0] !== -1 ? String(row[sheetAnomaliCols[0]] || "").trim() : "";
+          const tglRaw = sheetAnomaliCols[1] !== -1 ? String(row[sheetAnomaliCols[1]] || "").trim() : "";
+          const name = sheetAnomaliCols[2] !== -1 ? String(row[sheetAnomaliCols[2]] || "").trim() : "TIDAK TERIDENTIFIKASI";
+          const ulpVal = sheetAnomaliCols[3] !== -1 ? String(row[sheetAnomaliCols[3]] || "").trim() : "";
+          const jenis = sheetAnomaliCols[4] !== -1 ? String(row[sheetAnomaliCols[4]] || "").trim() : "Lainnya";
+          const desc = sheetAnomaliCols[5] !== -1 ? String(row[sheetAnomaliCols[5]] || "").trim() : "";
+          
+          const rptRaw = sheetAnomaliCols[6] !== -1 ? row[sheetAnomaliCols[6]] : "";
+          const rctRaw = sheetAnomaliCols[7] !== -1 ? row[sheetAnomaliCols[7]] : "";
+          
+          const rptVal = rptRaw !== "" && rptRaw !== undefined && rptRaw !== null ? Math.round(parseFloat(String(rptRaw)) || 0) : "-";
+          const rctVal = rctRaw !== "" && rctRaw !== undefined && rctRaw !== null ? Math.round(parseFloat(String(rctRaw)) || 0) : "-";
+
+          // Parse and apply filters
+          const targetUlpFilter = selectedUlp && selectedUlp !== "ALL" ? getCanonicalUlpName(standardizeUlpName(selectedUlp)) : null;
+          const uKey = getCanonicalUlpName(standardizeUlpName(ulpVal));
+          const isWithinUlpFilter = !targetUlpFilter || uKey === targetUlpFilter;
+          if (!isWithinUlpFilter) return;
+
+          // Date filter
+          if (startDate || endDate) {
+            const parsedLaporDate = this.parseSheetDate(tglRaw);
+            if (parsedLaporDate) {
+              if (startDate && parsedLaporDate < new Date(startDate)) return;
+              if (endDate) {
+                const endLimit = new Date(endDate);
+                endLimit.setHours(23, 59, 59, 999);
+                if (parsedLaporDate > endLimit) return;
+              }
+            }
+          }
+
+          totalAnomali++;
+          
+          // Categorize for sub-counters
+          const jenisLower = jenis.toLowerCase();
+          if (jenisLower.includes("kronologi") || jenisLower.includes("waktu")) {
+            chronologyAnomaliesCount++;
+          } else if (jenisLower.includes("check") || jenisLower.includes("check-in") || jenisLower.includes("tanpa")) {
+            missingCheckInOutCount++;
+          } else if (jenisLower.includes("ekstrim") || jenisLower.includes("durasi") || jenisLower.includes("120")) {
+            extremeDurationCount++;
+          } else if (jenisLower.includes("petugas") || jenisLower.includes("kosong")) {
+            missingOfficerCount++;
+          }
+
+          anomaliList.push([
+            id,
+            tglRaw,
+            name,
+            uKey || "UNKNOWN",
+            jenis,
+            desc,
+            rptVal,
+            rctVal
+          ]);
+
+          anomaliUlpDistributionMap.set(uKey || "UNKNOWN", (anomaliUlpDistributionMap.get(uKey || "UNKNOWN") || 0) + 1);
+          anomaliTypeDistributionMap.set(jenis, (anomaliTypeDistributionMap.get(jenis) || 0) + 1);
+
+          const oNameUpper = name.toUpperCase();
+          if (name && oNameUpper !== "UNKNOWN" && oNameUpper !== "N/A" && name !== "-" && oNameUpper !== "TIDAK TERIDENTIFIKASI") {
+            anomaliOfficerDistributionMap.set(name, (anomaliOfficerDistributionMap.get(name) || 0) + 1);
+          }
+        });
+    }
+
+    if (!hasActualAnomaliSheet) {
+      uniqueWoMap.forEach((wo) => {
+        const targetUlpFilter = selectedUlp && selectedUlp !== "ALL" ? getCanonicalUlpName(standardizeUlpName(selectedUlp)) : null;
+        const uKey = getCanonicalUlpName(standardizeUlpName(wo.ulp));
+        
+        const isWithinUlpFilter = !targetUlpFilter || uKey === targetUlpFilter;
+        if (!isWithinUlpFilter) return;
+
+        const anomaliesDetected: string[] = [];
+        const descriptions: string[] = [];
+
+        // 1. Chronology anomaly: Tgl Selesai < Tgl Lapor
+        const tglLaporParsed = wo.date;
+        const tglSelesaiRaw = woTglSelesaiIdx !== -1 && woTglSelesaiIdx < wo.rawRow.length ? wo.rawRow[woTglSelesaiIdx] : null;
+        const tglSelesaiParsed = tglSelesaiRaw ? this.parseSheetDate(String(tglSelesaiRaw)) : null;
+
+        if (tglLaporParsed && tglSelesaiParsed) {
+          if (tglSelesaiParsed.getTime() < tglLaporParsed.getTime()) {
+            anomaliesDetected.push("Kronologi");
+            descriptions.push(`Waktu Selesai mendahului waktu Lapor (Selesai: ${formatDateTime(tglSelesaiParsed)} < Lapor: ${formatDateTime(tglLaporParsed)})`);
+            chronologyAnomaliesCount++;
+          }
+        }
+
+        // 2. Missing Check-In / Check-Out
+        const isSelesai = wo.apktStatus === "SELESAI";
+        const checkInRaw = woCheckInIdx !== -1 && woCheckInIdx < wo.rawRow.length ? String(wo.rawRow[woCheckInIdx] || "").trim() : "";
+        const checkOutRaw = woCheckOutIdx !== -1 && woCheckOutIdx < wo.rawRow.length ? String(wo.rawRow[woCheckOutIdx] || "").trim() : "";
+
+        if (isSelesai) {
+          const missingIn = !checkInRaw || checkInRaw === "";
+          const missingOut = !checkOutRaw || checkOutRaw === "";
+          if (missingIn || missingOut) {
+            anomaliesDetected.push("Tanpa Check-in/out");
+            let desc = "Status Selesai tetapi ";
+            if (missingIn && missingOut) desc += "Check-In dan Check-Out kosong";
+            else if (missingIn) desc += "Check-In kosong";
+            else desc += "Check-Out kosong";
+            descriptions.push(desc);
+            missingCheckInOutCount++;
+          }
+        }
+
+        // 3. Extreme duration: RPT > 120 or RCT > 120
+        if (wo.rpt > 120 || wo.rct > 120) {
+          anomaliesDetected.push("Durasi Ekstrim");
+          const rptVal = wo.rpt >= 0 ? `${Math.round(wo.rpt)} mnt` : "N/A";
+          const rctVal = wo.rct >= 0 ? `${Math.round(wo.rct)} mnt` : "N/A";
+          descriptions.push(`Durasi melebihi batas wajar 120 menit (RPT: ${rptVal}, RCT: ${rctVal})`);
+          extremeDurationCount++;
+        }
+
+        // 4. Missing officer
+        const oName = String(wo.name || "").trim();
+        const oNameUpper = oName.toUpperCase();
+        if (!oName || oName === "" || oName === "-" || oNameUpper === "UNKNOWN" || oNameUpper === "N/A") {
+          anomaliesDetected.push("Petugas Kosong");
+          descriptions.push("Petugas penanggung jawab tidak terisi atau tidak valid");
+          missingOfficerCount++;
+        }
+
+        if (anomaliesDetected.length > 0) {
+          totalAnomali++;
+          const textLapor = wo.rawRow[woTglLaporIdx] || wo.rawRow[woDateIdx] || wo.dateRaw || "-";
+          anomaliList.push([
+            wo.id,
+            textLapor,
+            wo.name || "TIDAK TERIDENTIFIKASI",
+            uKey || "UNKNOWN",
+            anomaliesDetected.join(", "),
+            descriptions.join("; "),
+            wo.rpt >= 0 ? Math.round(wo.rpt) : "-",
+            wo.rct >= 0 ? Math.round(wo.rct) : "-"
+          ]);
+
+          anomaliUlpDistributionMap.set(uKey, (anomaliUlpDistributionMap.get(uKey) || 0) + 1);
+
+          anomaliesDetected.forEach(type => {
+            anomaliTypeDistributionMap.set(type, (anomaliTypeDistributionMap.get(type) || 0) + 1);
+          });
+
+          if (wo.name && oNameUpper !== "UNKNOWN" && oNameUpper !== "N/A" && oName !== "-") {
+            anomaliOfficerDistributionMap.set(wo.name, (anomaliOfficerDistributionMap.get(wo.name) || 0) + 1);
+          }
+        }
+      });
+    }
+
+    const ulpDistribution = Array.from(anomaliUlpDistributionMap.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    const typeDistribution = Array.from(anomaliTypeDistributionMap.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    const officerDistribution = Array.from(anomaliOfficerDistributionMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
     return {
       summary: {
         totalBaca: totalWoCount,
@@ -1069,6 +1352,17 @@ export class GoogleSheetsService {
       },
       allUlps,
       allPoskos: Array.from(allPoskosSet).sort(),
+      anomali: {
+        totalAnomali,
+        chronologyAnomalies: chronologyAnomaliesCount,
+        missingCheckInOut: missingCheckInOutCount,
+        extremeDuration: extremeDurationCount,
+        missingOfficer: missingOfficerCount,
+        anomaliList,
+        ulpDistribution,
+        typeDistribution,
+        officerDistribution
+      },
       overSla: {
         totalGangguan: totalSlaGangguan,
         highestRpt: Math.round(highestRpt * 100) / 100,

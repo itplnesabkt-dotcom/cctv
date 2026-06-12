@@ -10,6 +10,7 @@ import { ULPPerformanceTable } from './components/ULPPerformanceTable.tsx';
 import { DetailModal } from './components/DetailModal.tsx';
 import { OverSLAPage } from './components/OverSLAPage.tsx';
 import { RatingPage } from './components/RatingPage.tsx';
+import { AnomaliPage } from './components/AnomaliPage.tsx';
 import { GoogleSheetsService } from './services/googleSheetsService.ts';
 import { DashboardData } from './types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -22,7 +23,7 @@ export default function App() {
   const [selectedUlp, setSelectedUlp] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [activeTab, setActiveTab] = useState<'CCTV' | 'OVER_SLA' | 'RATING'>('CCTV');
+  const [activeTab, setActiveTab] = useState<'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING'>('CCTV');
   
   // Clear filter when changing tabs since the filter source (ULP vs Posko) changes
   useEffect(() => {
@@ -363,6 +364,8 @@ export default function App() {
                   />
                 </div>
               </div>
+            ) : activeTab === 'ANOMALI' ? (
+              <AnomaliPage data={filteredData?.anomali || data.anomali} />
             ) : activeTab === 'OVER_SLA' ? (
               <OverSLAPage 
                 data={filteredData?.overSla || data.overSla} 

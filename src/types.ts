@@ -28,12 +28,25 @@ export interface DashboardData {
   allPoskos: string[];
   overSla: OverSLAData;
   rating: RatingData;
+  anomali: AnomaliData;
   rawWoRows: any[][];
   rawPoRows: any[][];
   woHeaders: string[];
   poHeaders: string[];
   woIndices: { name: number; ulp: number; cctv: number; tglLapor: number; tglPengerjaan: number; tglSelesai: number; source: number; reporter: number; shift: number; rpt: number; rct: number };
   poIndices: { name: number; ulp: number; cctv: number };
+}
+
+export interface AnomaliData {
+  totalAnomali: number;
+  chronologyAnomalies: number;
+  missingCheckInOut: number;
+  extremeDuration: number;
+  missingOfficer: number;
+  anomaliList: any[][]; // Table row structure: [No Laporan, Tgl Laporan, Nama Petugas, ULP, Jenis Anomali, Deskripsi, RPT, RCT]
+  ulpDistribution: { name: string; value: number }[];
+  typeDistribution: { name: string; value: number }[];
+  officerDistribution: { name: string; count: number }[];
 }
 
 export interface OverSLAData {
