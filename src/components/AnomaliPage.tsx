@@ -32,7 +32,10 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Cell
+  Cell,
+  PieChart,
+  Pie,
+  Sector
 } from 'recharts';
 
 // Custom classification function for Indonesian Safety & Yandal Metrics
@@ -57,16 +60,31 @@ export const classifyAnomaly = (jenis: string, deskripsi: string): number => {
   return -1;
 };
 
-const CustomRadarTooltip = ({ active, payload }: any) => {
+const roseColorsArray = [
+  '#4f83e3', // Blue
+  '#2ac9db', // Cyan
+  '#3dcf9f', // Teal/Mint
+  '#74db86', // Soft Light Green
+  '#99e3ab', // Very Soft Pastel Green
+  '#dfc76e', // Pastel Gold/Cream
+  '#f5aa5f', // Soft Amber/Orange
+  '#e88476', // Soft Salmon/Red
+  '#c598ea', // Pastel Violet
+  '#7dc2e8', // Pastel Sky Blue
+  '#93a37d', // Sage Green
+  '#cfaf93'  // Warm Clay
+];
+
+const CustomRoseTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     const item = payload[0].payload;
     return (
-      <div className="bg-slate-900/95 text-white p-3 rounded-xl border border-rose-500 shadow-xl backdrop-blur-md max-w-xs">
-        <p className="text-[9px] uppercase font-black tracking-widest text-rose-400">Keterangan Anomali</p>
+      <div className="bg-[#1b3d5d]/95 text-white p-3 rounded-xl border border-cyan-400 shadow-xl backdrop-blur-md max-w-xs">
+        <p className="text-[9px] uppercase font-black tracking-widest text-cyan-300">Keterangan Anomali</p>
         <p className="text-[11px] font-bold leading-snug mt-1">{item.name}</p>
-        <div className="border-t border-slate-800 my-2 pt-1.5 flex items-center justify-between">
-          <span className="text-[9px] text-slate-400 font-bold uppercase">Jumlah Kasus:</span>
-          <span className="text-xs font-black text-rose-300">{item.count}</span>
+        <div className="border-t border-slate-800 my-2 pt-1.5 flex items-center justify-between gap-6">
+          <span className="text-[9px] text-slate-300 font-bold uppercase">Jumlah Kasus:</span>
+          <span className="text-xs font-black text-cyan-200">{item.count}</span>
         </div>
       </div>
     );
@@ -547,21 +565,6 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
   return (
     <div id="anomali_page_outer" className="flex flex-col gap-6 p-6 bg-slate-50/50 rounded-2xl min-h-full">
       
-      {/* Title block */}
-      <div id="anomali_page_hero" className="bg-white p-5 rounded-2xl border border-blue-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-base font-black tracking-tight text-gray-900 flex items-center gap-2">
-            <span className="p-1.5 bg-blue-50 text-[#1b3d5d] rounded-lg">
-              <AlertTriangle className="animate-pulse" size={16} />
-            </span>
-            MONITORING ANOMALI YANDAL
-          </h2>
-          <p className="text-[11px] text-gray-400 mt-0.5 font-semibold">
-            Gunakan layout di bawah untuk memonitor kasus anomali. Klik pada setiap angka unit atau angka di tabel petugas untuk memunculkan detail data.
-          </p>
-        </div>
-      </div>
-
       {/* Row 1 Grid: All cards aligned in a single row */}
       <div 
         id="anomali_row_deck" 
@@ -920,31 +923,96 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
               Distribusi frekuensi temuan berdasarkan 12 kategori integritas (Rose/Radar)
             </p>
           </div>
-          <div className="flex-1 w-full min-h-0 flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart cx="50%" cy="50%" outerRadius="68%" data={keteranganAnomaliChartData}>
-                <PolarGrid stroke="#e2e8f0" strokeDasharray="4 4" />
-                <PolarAngleAxis 
-                  dataKey="shortName" 
-                  tick={{ fill: '#475569', fontSize: 8.5, fontWeight: 700 }}
-                />
-                <PolarRadiusAxis 
-                  angle={90} 
-                  domain={[0, 'auto']} 
-                  tick={{ fill: '#475569', fontSize: 9, fontWeight: 500 }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Radar 
-                  name="Jumlah Kasus" 
-                  dataKey="count" 
-                  stroke="#0284c7" 
-                  fill="#06b6d4" 
-                  fillOpacity={0.4} 
-                />
-                <RechartsTooltip content={<CustomRadarTooltip />} />
-              </RadarChart>
-            </ResponsiveContainer>
+          <div className="flex-1 w-full min-h-0 flex flex-col justify-between">
+            <div className="flex-1 min-h-0 relative">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={keteranganAnomaliChartData.map(item => ({ ...item, value: 1 }))}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={15}
+                    outerRadius={140}
+                    dataKey="value"
+                    shape={(props: any) => {
+                      const { cx, cy, innerRadius, startAngle, endAngle, fill, payload } = props;
+                      
+                      // Dynamic outerRadius logic
+                      const counts = keteranganAnomaliChartData.map(d => d.count);
+                      const maxVal = Math.max(...counts, 1);
+                      const minOuterRadius = 30;
+                      const maxOuterRadius = 135;
+                      
+                      const currentOuterRadius = payload.count === 0 
+                        ? minOuterRadius 
+                        : minOuterRadius + (payload.count / maxVal) * (maxOuterRadius - minOuterRadius);
+
+                      const middleAngle = (startAngle + endAngle) / 2;
+                      const RADIAN = Math.PI / 180;
+                      const labelRadius = innerRadius + (currentOuterRadius - innerRadius) * 0.55;
+                      const labelX = cx + labelRadius * Math.cos(-middleAngle * RADIAN);
+                      const labelY = cy + labelRadius * Math.sin(-middleAngle * RADIAN);
+
+                      const sumVal = counts.reduce((a, b) => a + b, 0);
+                      const percentage = sumVal > 0 ? Math.round((payload.count / sumVal) * 100) : 0;
+
+                      return (
+                        <g>
+                          <Sector
+                            cx={cx}
+                            cy={cy}
+                            innerRadius={innerRadius}
+                            outerRadius={currentOuterRadius}
+                            startAngle={startAngle}
+                            endAngle={endAngle}
+                            fill={fill}
+                            opacity={0.85}
+                            cursor="pointer"
+                            stroke="#ffffff"
+                            strokeWidth={1.5}
+                            className="transition-all duration-300 hover:opacity-100"
+                          />
+                          {percentage > 0 && currentOuterRadius > 50 && (
+                            <text
+                              x={labelX}
+                              y={labelY}
+                              fill="#ffffff"
+                              textAnchor="middle"
+                              dominantBaseline="central"
+                              className="text-[9px] font-extrabold pointer-events-none drop-shadow-md select-none"
+                            >
+                              {`${percentage}%`}
+                            </text>
+                          )}
+                        </g>
+                      );
+                    }}
+                  >
+                    {keteranganAnomaliChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={roseColorsArray[index % roseColorsArray.length]} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip content={<CustomRoseTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            
+            {/* Custom Legend Underneath the Rose Chart */}
+            <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5 mt-2 max-h-[110px] overflow-y-auto custom-scrollbar px-1 py-1.5 bg-slate-50 rounded-xl border border-slate-100">
+              {keteranganAnomaliChartData.map((item, index) => {
+                const color = roseColorsArray[index % roseColorsArray.length];
+                return (
+                  <div 
+                    key={index} 
+                    className="flex items-center gap-1.5 bg-white border border-slate-100 px-2 py-0.5 rounded-lg text-[8px] font-black text-slate-700 uppercase tracking-tight shadow-sm hover:scale-[1.03] transition-transform cursor-pointer"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                    <span>{item.shortName}</span>
+                    <span className="text-[7.5px] font-bold text-slate-400 bg-slate-100 px-1 rounded tabular-nums">{item.count}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
