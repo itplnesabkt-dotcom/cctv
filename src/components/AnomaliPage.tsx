@@ -12,10 +12,28 @@ import {
   AlertOctagon,
   FileSpreadsheet,
   User,
-  ArrowUpDown
+  ArrowUpDown,
+  BarChart3,
+  PieChart as PieIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
+import {
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  Legend as RechartsLegend,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Cell
+} from 'recharts';
 
 // Custom classification function for Indonesian Safety & Yandal Metrics
 export const classifyAnomaly = (jenis: string, deskripsi: string): number => {
@@ -37,6 +55,40 @@ export const classifyAnomaly = (jenis: string, deskripsi: string): number => {
   if (text.includes("selesai") || text.includes("pekerjaan selesai")) return 11;
 
   return -1;
+};
+
+const CustomRadarTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const item = payload[0].payload;
+    return (
+      <div className="bg-slate-900/95 text-white p-3 rounded-xl border border-rose-500 shadow-xl backdrop-blur-md max-w-xs">
+        <p className="text-[9px] uppercase font-black tracking-widest text-rose-400">Keterangan Anomali</p>
+        <p className="text-[11px] font-bold leading-snug mt-1">{item.name}</p>
+        <div className="border-t border-slate-800 my-2 pt-1.5 flex items-center justify-between">
+          <span className="text-[9px] text-slate-400 font-bold uppercase">Jumlah Kasus:</span>
+          <span className="text-xs font-black text-rose-300">{item.count}</span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
+const CustomBarTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const item = payload[0].payload;
+    return (
+      <div className="bg-slate-900/95 text-white p-3 rounded-xl border border-slate-700 shadow-xl backdrop-blur-md">
+        <p className="text-[9px] uppercase font-black tracking-widest text-slate-400">Unit ULP</p>
+        <p className="text-xs font-black mt-1 uppercase">{item.ulpName}</p>
+        <div className="border-t border-slate-800 my-2 pt-1.5 flex items-center justify-between gap-6">
+          <span className="text-[9px] text-slate-400 font-bold uppercase">Total Anomali:</span>
+          <span className="text-xs font-black text-rose-400">{item.total}</span>
+        </div>
+      </div>
+    );
+  }
+  return null;
 };
 
 interface AnomaliPageProps {
@@ -149,15 +201,85 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
 
       const jenis = String(row[4] || "");
       const desc = String(row[5] || "");
-      const catIdx = classifyAnomaly(jenis, desc);
+      
+      // Since jenis can be comma-separated, split it by "," to correctly increment specific safety columns
+      const parts = jenis.split(",").map(p => p.trim()).filter(Boolean);
+      parts.forEach(part => {
+        const catIdx = classifyAnomaly(part, desc);
+        if (catIdx !== -1) {
+          groups[key].counts[catIdx]++;
+        } else {
+          groups[key].counts[0]++;
+        }
+      });
 
-      if (catIdx !== -1) {
-        groups[key].counts[catIdx]++;
-      } else {
-        // Fallback to index 0 (CCTV) so everything is counted
-        groups[key].counts[0]++;
+      if (parts.length === 0) {
+        // Fallback class click
+        const catIdx = classifyAnomaly("", desc);
+        if (catIdx !== -1) {
+          groups[key].counts[catIdx]++;
+        } else {
+          groups[key].counts[0]++;
+        }
       }
+
+      // Increment total by 1 representing exactly one distinct sheet row/job of ANOMALI
       groups[key].total++;
+    });
+
+    return Object.values(groups).sort((a, b) => b.total - a.total);
+  }, [data]);
+
+  // Calculate ULP Pivot Table
+  const ulpPivotData = useMemo(() => {
+    if (!data || !data.anomaliList) return [];
+
+    const groups: { [key: string]: { ulp: string; counts: number[]; total: number } } = {};
+
+    // Pre-initialize standard 7 ULPs so they always appear in the table
+    ulpList.forEach(u => {
+      groups[u.name] = {
+        ulp: u.name,
+        counts: Array(12).fill(0),
+        total: 0
+      };
+    });
+
+    data.anomaliList.forEach(row => {
+      let rawUlp = String(row[3] || "").trim().toUpperCase();
+      if (!rawUlp || rawUlp === "-" || rawUlp === "UNKNOWN") return;
+
+      if (!groups[rawUlp]) {
+        groups[rawUlp] = {
+          ulp: rawUlp,
+          counts: Array(12).fill(0),
+          total: 0
+        };
+      }
+
+      const jenis = String(row[4] || "");
+      const desc = String(row[5] || "");
+
+      const parts = jenis.split(",").map(p => p.trim()).filter(Boolean);
+      parts.forEach(part => {
+        const catIdx = classifyAnomaly(part, desc);
+        if (catIdx !== -1) {
+          groups[rawUlp].counts[catIdx]++;
+        } else {
+          groups[rawUlp].counts[0]++;
+        }
+      });
+
+      if (parts.length === 0) {
+        const catIdx = classifyAnomaly("", desc);
+        if (catIdx !== -1) {
+          groups[rawUlp].counts[catIdx]++;
+        } else {
+          groups[rawUlp].counts[0]++;
+        }
+      }
+
+      groups[rawUlp].total++;
     });
 
     return Object.values(groups).sort((a, b) => b.total - a.total);
@@ -176,6 +298,59 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
       return matchesSearch && matchesUlp;
     });
   }, [pivotData, pivotSearch, pivotUlpSelect]);
+
+  // Filter ULP pivot table rows based on ULP selector (or other search if applicable)
+  const filteredUlpPivotData = useMemo(() => {
+    return ulpPivotData.filter(row => {
+      const matchesSearch = row.ulp.toLowerCase().includes(pivotSearch.toLowerCase());
+      
+      const matchesUlp = pivotUlpSelect === "ALL" || 
+                         row.ulp.toUpperCase() === pivotUlpSelect.toUpperCase() ||
+                         row.ulp.toUpperCase().includes(pivotUlpSelect.toUpperCase());
+                         
+      return matchesSearch && matchesUlp;
+    });
+  }, [ulpPivotData, pivotSearch, pivotUlpSelect]);
+
+  // Chart data for KETERANGAN ANOMALI (Rose / Radar Chart style representation)
+  const keteranganAnomaliChartData = useMemo(() => {
+    const counts = Array(12).fill(0);
+    filteredUlpPivotData.forEach(row => {
+      row.counts.forEach((count, idx) => {
+        counts[idx] += count;
+      });
+    });
+
+    const getShortLabel = (label: string) => {
+      if (label.includes("CCTV")) return "CCTV";
+      if (label.includes("Rambu")) return "Rambu";
+      if (label.includes("PS4")) return "PS4";
+      if (label.includes("Tunjuk Sebut")) return "APD Tunjuk";
+      if (label.includes("CCV")) return "CCV";
+      if (label.includes("Alat Kerja")) return "Alat/Mat";
+      if (label.includes("WP & JSA")) return "WP & JSA";
+      if (label.includes("Yandal ke HSSE")) return "Yandal HSSE";
+      if (label.includes("Safety Briefing")) return "Safety Brief";
+      if (label.includes("tersengat Listrik")) return "Anti Listrik";
+      if (label.includes("Terjatuh dari Ketinggian")) return "Anti Tinggi";
+      if (label.includes("Pekerjaan Selesai")) return "Lap Selesai";
+      return label;
+    };
+
+    return categories.map(cat => ({
+      name: cat.label,
+      shortName: getShortLabel(cat.label),
+      count: counts[cat.index]
+    }));
+  }, [filteredUlpPivotData]);
+
+  // Chart data for ANOMALI PER ULP (Bar / Batang Chart)
+  const ulpChartData = useMemo(() => {
+    return filteredUlpPivotData.map(row => ({
+      ulpName: row.ulp,
+      total: row.total
+    }));
+  }, [filteredUlpPivotData]);
 
   const handlePivotSearchChange = (val: string) => {
     setPivotSearch(val);
@@ -200,9 +375,15 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
 
   // Handle open modal for specific Pivot table cell click!
   const openModalForCell = (petugas: string, ulp: string, categoryIdx: number | null, categoryLabel?: string) => {
+    const Tomor = petugas.toUpperCase().trim();
     const filtered = (data?.anomaliList || []).filter(row => {
+      // Robust split-matching for officers in case of helper teams/comma values
       const rowPetugas = String(row[2] || "").toUpperCase().trim();
-      if (rowPetugas !== petugas.toUpperCase().trim()) return false;
+      const isOfficerMatch = rowPetugas === Tomor || 
+        rowPetugas.split(",").map(n => n.trim()).includes(Tomor) ||
+        Tomor.split(",").map(n => n.trim()).includes(rowPetugas);
+        
+      if (!isOfficerMatch) return false;
       
       const rowUlp = String(row[3] || "").toUpperCase().trim();
       if (ulp !== "ALL" && rowUlp !== ulp.toUpperCase().trim() && !rowUlp.includes(ulp.toUpperCase().trim())) return false;
@@ -210,10 +391,22 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
       if (categoryIdx !== null) {
         const rowJenis = String(row[4] || "");
         const rowDesc = String(row[5] || "");
-        const idx = classifyAnomaly(rowJenis, rowDesc);
-        if (idx !== categoryIdx) {
-          if (categoryIdx === 0 && idx === -1) return true; // Fallback mapping match
-          return false;
+        const parts = rowJenis.split(",").map(p => p.trim()).filter(Boolean);
+        
+        if (parts.length > 0) {
+          const hasCategoryMatch = parts.some(part => {
+            const idx = classifyAnomaly(part, rowDesc);
+            return idx === categoryIdx;
+          });
+          if (!hasCategoryMatch) return false;
+        } else {
+          const idx = classifyAnomaly("", rowDesc);
+          if (idx !== categoryIdx) {
+            if (categoryIdx === 0 && idx === -1) {
+              return true; // Fallback mapping match
+            }
+            return false;
+          }
         }
       }
       return true;
@@ -232,25 +425,88 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
   // Excel Export for Pivot table itself
   const handleExportPivotExcel = () => {
     const headers = [
-      "PETUGAS", "ULP", 
+      "PETUGAS", "ULP", "TOTAL ANOMALI",
       "CCTV", "Rambu Kerja", "PS4", "APD Tunjuk Sebut", 
       "Konfirmasi CCV", "Kelengkapan Alat Kerja & Material", "WP & JSA", 
       "Laporan Yandal ke HSSE Sebelum Bekerja", "Safety Briefing", 
       "Antisipasi tersengat Listrik", "Antisipasi Terjatuh dari Ketinggian", 
-      "Laporan Pekerjaan Selesai", "TOTAL"
+      "Laporan Pekerjaan Selesai"
     ];
     
     const rows = filteredPivotData.map(r => [
       r.petugas,
       r.ulp,
-      ...r.counts,
-      r.total
+      r.total,
+      ...r.counts
     ]);
     
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Rekap Per Petugas");
     XLSX.writeFile(wb, `REKAP_ANOMALI_PETUGAS_${new Date().getTime()}.xlsx`);
+  };
+
+  // Handle open modal for specific ULP Pivot table cell click!
+  const openModalForUlpCell = (ulp: string, categoryIdx: number | null, categoryLabel?: string) => {
+    const filtered = (data?.anomaliList || []).filter(row => {
+      const rowUlp = String(row[3] || "").toUpperCase().trim();
+      if (ulp !== "ALL" && rowUlp !== ulp.toUpperCase().trim() && !rowUlp.includes(ulp.toUpperCase().trim())) return false;
+      
+      if (categoryIdx !== null) {
+        const rowJenis = String(row[4] || "");
+        const rowDesc = String(row[5] || "");
+        const parts = rowJenis.split(",").map(p => p.trim()).filter(Boolean);
+        
+        if (parts.length > 0) {
+          const hasCategoryMatch = parts.some(part => {
+            const idx = classifyAnomaly(part, rowDesc);
+            return idx === categoryIdx;
+          });
+          if (!hasCategoryMatch) return false;
+        } else {
+          const idx = classifyAnomaly("", rowDesc);
+          if (idx !== categoryIdx) {
+            if (categoryIdx === 0 && idx === -1) {
+              return true; // Fallback mapping match
+            }
+            return false;
+          }
+        }
+      }
+      return true;
+    });
+
+    setDetailModal({
+      title: `ULP ${ulp}`,
+      subTitle: categoryLabel ? `Pemeriksaan Integritas: ${categoryLabel} (${filtered.length} Kasus)` : `Semua Temuan Integritas (${filtered.length} Kasus)`,
+      excelName: `ANOMALI_ULP_${ulp.replace(/\s+/g, '_')}_${(categoryLabel || "ALL").replace(/\s+/g, '_')}`,
+      rows: filtered
+    });
+    setModalSearch('');
+    setCurrentPage(1);
+  };
+
+  // Excel Export for ULP Pivot table itself
+  const handleExportUlpPivotExcel = () => {
+    const headers = [
+      "ULP", "TOTAL ANOMALI",
+      "CCTV", "Rambu Kerja", "PS4", "APD Tunjuk Sebut", 
+      "Konfirmasi CCV", "Kelengkapan Alat Kerja & Material", "WP & JSA", 
+      "Laporan Yandal ke HSSE Sebelum Bekerja", "Safety Briefing", 
+      "Antisipasi tersengat Listrik", "Antisipasi Terjatuh dari Ketinggian", 
+      "Laporan Pekerjaan Selesai"
+    ];
+    
+    const rows = filteredUlpPivotData.map(r => [
+      r.ulp,
+      r.total,
+      ...r.counts
+    ]);
+    
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Rekap Per ULP");
+    XLSX.writeFile(wb, `REKAP_ANOMALI_ULP_${new Date().getTime()}.xlsx`);
   };
 
   // Excel Export inside modal
@@ -292,13 +548,13 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
     <div id="anomali_page_outer" className="flex flex-col gap-6 p-6 bg-slate-50/50 rounded-2xl min-h-full">
       
       {/* Title block */}
-      <div id="anomali_page_hero" className="bg-white p-5 rounded-2xl border border-rose-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div id="anomali_page_hero" className="bg-white p-5 rounded-2xl border border-blue-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-base font-black tracking-tight text-gray-900 flex items-center gap-2">
-            <span className="p-1.5 bg-rose-50 text-rose-500 rounded-lg">
+            <span className="p-1.5 bg-blue-50 text-[#1b3d5d] rounded-lg">
               <AlertTriangle className="animate-pulse" size={16} />
             </span>
-            MONITORING INTEGRITAS DATA YANDAL
+            MONITORING ANOMALI YANDAL
           </h2>
           <p className="text-[11px] text-gray-400 mt-0.5 font-semibold">
             Gunakan layout di bawah untuk memonitor kasus anomali. Klik pada setiap angka unit atau angka di tabel petugas untuk memunculkan detail data.
@@ -316,7 +572,7 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
         <div 
           onClick={() => openModalForUnit("UP3 BUKITTINGGI")}
           id="card_up3_bukittinggi" 
-          className="snap-center shrink-0 w-[240px] lg:w-auto bg-gradient-to-br from-rose-500 to-rose-600 text-white p-5 rounded-2xl shadow-md shadow-rose-200 border border-rose-400 hover:shadow-lg hover:scale-[1.03] active:scale-95 transition-all cursor-pointer flex flex-col justify-between min-h-[160px]"
+          className="snap-center shrink-0 w-[240px] lg:w-auto bg-gradient-to-br from-blue-600 to-[#1b3d5d] text-white p-5 rounded-2xl shadow-md shadow-blue-200 border border-blue-400 hover:shadow-lg hover:scale-[1.03] active:scale-95 transition-all cursor-pointer flex flex-col justify-between min-h-[160px]"
         >
           <div className="flex items-start justify-between">
             <div className="p-2.5 bg-white/10 rounded-xl backdrop-blur-md">
@@ -335,16 +591,16 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
           </div>
           
           <div className="mt-4">
-            <p className="text-[9px] font-extrabold tracking-widest text-rose-100 uppercase">
+            <p className="text-[9px] font-extrabold tracking-widest text-blue-100 uppercase">
               UP3 BUKITTINGGI
             </p>
             <div className="flex items-baseline gap-1 mt-0.5">
               <h3 className="text-3xl font-black tracking-tight leading-none hover:underline">
                 {totalUp3Anomali.toLocaleString()}
               </h3>
-              <span className="text-[10px] text-rose-100 font-bold">kasus</span>
+              <span className="text-[10px] text-blue-100 font-bold">kasus</span>
             </div>
-            <p className="text-[8px] text-rose-100/85 font-medium mt-1 line-clamp-1">
+            <p className="text-[8px] text-blue-100/85 font-medium mt-1 line-clamp-1">
               Semua temuan anomali
             </p>
           </div>
@@ -358,14 +614,14 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
               key={ulp.id}
               id={`card_ulp_${ulp.id}`}
               onClick={() => openModalForUnit(ulp.name)}
-              className="snap-center shrink-0 w-[180px] lg:w-auto bg-white hover:bg-rose-50/10 p-5 rounded-2xl border border-gray-100 hover:border-rose-200 shadow-sm hover:shadow-md hover:-translate-y-1 active:scale-95 transition-all cursor-pointer flex flex-col justify-between min-h-[160px]"
+              className="snap-center shrink-0 w-[180px] lg:w-auto bg-white hover:bg-blue-50/10 p-5 rounded-2xl border border-gray-100 hover:border-blue-200 shadow-sm hover:shadow-md hover:-translate-y-1 active:scale-95 transition-all cursor-pointer flex flex-col justify-between min-h-[160px]"
             >
               <div className="flex items-start justify-between">
                 <div className="p-2 bg-slate-50 text-slate-400 rounded-lg">
                   <MapPin size={16} />
                 </div>
                 <span className={`text-[8px] font-black tracking-widest px-2 py-0.5 rounded-full ${
-                  count > 0 ? "bg-rose-50 text-rose-600 border border-rose-100" : "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                  count > 0 ? "bg-blue-50 text-blue-600 border border-blue-100" : "bg-emerald-50 text-emerald-600 border border-emerald-100"
                 }`}>
                   {count > 0 ? "TEMUAN" : "AMAN"}
                 </span>
@@ -377,7 +633,7 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
                 </p>
                 <div className="flex items-baseline gap-1 mt-0.5">
                   <h3 className={`text-2xl font-black tracking-tight leading-none tabular-nums ${
-                    count > 0 ? "text-rose-600 hover:underline" : "text-gray-800"
+                    count > 0 ? "text-blue-600 hover:underline" : "text-gray-800"
                   }`}>
                     {count.toLocaleString()}
                   </h3>
@@ -394,137 +650,350 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
       </div>
 
       {/* Section 2: Tabel Per Petugas as requested with exactly matched headers */}
-      <div id="pivot_petugas_section" className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col gap-4 p-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div id="pivot_petugas_section" className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col gap-4">
+        <div className="px-5 py-4 bg-gradient-to-r from-[#06b6d4] to-[#1b3d5d] text-white flex flex-col lg:flex-row lg:items-center justify-between gap-4 shrink-0">
           <div>
-            <h3 className="text-xs font-black tracking-widest text-slate-900 uppercase flex items-center gap-1.5">
-              <User size={14} className="text-rose-500" />
-              REKAPITULASI ANOMALI INTEGRITAS DATA PER PETUGAS
+            <h3 className="text-xs font-black tracking-widest text-white uppercase flex items-center gap-1.5">
+              <User size={14} className="text-cyan-300" />
+              REKAPITULASI ANOMALI PER PETUGAS
             </h3>
-            <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
+            <p className="text-[10px] text-cyan-100 font-bold uppercase mt-0.5 opacity-80">
               Diurutkan dari total temuan kasus anomali terbanyak
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             {/* ULP dropdown selection */}
-            <select
-              value={pivotUlpSelect}
-              onChange={(e) => handlePivotUlpChange(e.target.value)}
-              className="px-2.5 py-1.5 border border-slate-200 focus:border-rose-450 focus:outline-none bg-white text-[11px] font-black uppercase text-slate-700 rounded-xl"
-            >
-              <option value="ALL">SEMUA ULP (UP3)</option>
-              {ulpList.map(u => (
-                <option key={u.id} value={u.name}>{u.name}</option>
-              ))}
-            </select>
+            <div className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1.5 rounded-xl border border-white/20">
+              <span className="text-[8px] font-black uppercase text-white/75 shrink-0">UNIT:</span>
+              <select
+                value={pivotUlpSelect}
+                onChange={(e) => handlePivotUlpChange(e.target.value)}
+                className="bg-transparent text-white text-[10px] font-black uppercase outline-none cursor-pointer min-w-0"
+              >
+                <option value="ALL" className="text-slate-900 bg-white font-semibold">SEMUA ULP (UP3)</option>
+                {ulpList.map(u => (
+                  <option key={u.id} value={u.name} className="text-slate-900 bg-white font-semibold">{u.name}</option>
+                ))}
+              </select>
+            </div>
 
             {/* Live Search inside pivot table */}
-            <div className="relative w-44">
-              <span className="absolute inset-y-0 left-2.5 flex items-center text-slate-400">
-                <Search size={12} />
-              </span>
+            <div className="relative w-44 flex items-center gap-1.5 bg-white/10 px-2.5 py-1.5 rounded-xl border border-white/20">
+              <Search size={11} className="text-white/70" />
               <input
                 type="text"
                 value={pivotSearch}
                 onChange={(e) => handlePivotSearchChange(e.target.value)}
                 placeholder="Cari petugas..."
-                className="w-full pl-8 pr-3 py-1.5 border border-slate-200 focus:border-rose-450 focus:outline-none bg-white text-[11px] font-bold text-slate-700 rounded-xl"
+                className="bg-transparent text-white placeholder-white/50 text-[10px] font-bold outline-none w-full"
               />
             </div>
 
             {/* Export Pivot Button */}
             <button
               onClick={handleExportPivotExcel}
-              className="flex items-center gap-1 bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-xl text-[10px] font-extrabold tracking-widest uppercase transition-all"
+              className="flex items-center gap-1 bg-white hover:bg-white/90 text-[#1b3d5d] px-3.5 py-1.5 rounded-xl text-[9px] font-black tracking-widest uppercase transition-all active:scale-95 shadow-md"
             >
-              <Download size={11} />
+              <Download size={10} className="stroke-[3]" />
               EXPORT MATRIX
             </button>
           </div>
         </div>
 
-        {/* Pivot Matrix Table Wrapper */}
-        <div className="overflow-auto border border-slate-300 rounded-xl custom-scrollbar max-h-[600px] shadow-inner">
-          <table className="w-full text-center border-collapse text-[11px] font-semibold text-slate-800 min-w-[1300px]">
-            <thead className="sticky top-0 z-10 bg-slate-900 border-b border-slate-750">
-              {/* Row 1 Headers */}
-              <tr className="bg-slate-900 text-white uppercase font-black text-[10px] tracking-wider">
-                <th rowSpan={2} className="px-3 py-4 border-r border-slate-700 text-left min-w-[200px] sticky top-0 bg-slate-900 z-10">PETUGAS</th>
-                <th rowSpan={2} className="px-3 py-4 border-r border-slate-700 text-left min-w-[140px] sticky top-0 bg-slate-900 z-10">ULP</th>
-                <th colSpan={12} className="px-3 py-2 border-r border-slate-700 text-center tracking-widest bg-slate-800 text-slate-100">KETERANGAN ANOMALI</th>
-                <th rowSpan={2} className="px-3 py-4 text-center min-w-[80px] bg-rose-950 text-white border-l border-slate-700 sticky top-0 bg-rose-950 z-10">TOTAL</th>
-              </tr>
-              {/* Row 2 Sub-headers with EXACT requested names */}
-              <tr className="bg-slate-800 text-slate-300 uppercase text-[9px] font-black tracking-tight border-t border-slate-700">
-                <th className="px-2 py-3 border-r border-slate-700 min-w-[90px] bg-slate-800">CCTV</th>
-                <th className="px-2 py-3 border-r border-slate-700 min-w-[110px] bg-slate-800">Rambu Kerja</th>
-                <th className="px-2 py-3 border-r border-slate-700 min-w-[80px] bg-slate-800">PS4</th>
-                <th className="px-2 py-3 border-r border-slate-700 min-w-[120px] bg-slate-800">APD Tunjuk Sebut</th>
-                <th className="px-2 py-3 border-r border-slate-700 min-w-[110px] bg-slate-800">Konfirmasi CCV</th>
-                <th className="px-2 py-3 border-r border-slate-700 min-w-[150px] bg-slate-800">Kelengkapan Alat Kerja & Material</th>
-                <th className="px-2 py-3 border-r border-slate-700 min-w-[90px] bg-slate-800">WP & JSA</th>
-                <th className="px-2 py-3 border-r border-slate-700 min-w-[160px] bg-slate-800">Laporan Yandal ke HSSE Sebelum Bekerja</th>
-                <th className="px-2 py-3 border-r border-slate-700 min-w-[110px] bg-slate-800">Safety Briefing</th>
-                <th className="px-2 py-3 border-r border-slate-700 min-w-[120px] bg-slate-800">Antisipasi tersengat Listrik</th>
-                <th className="px-2 py-3 border-r border-slate-700 min-w-[120px] bg-slate-800">Antisipasi Terjatuh dari Ketinggian</th>
-                <th className="px-2 py-3 border-r border-slate-700 min-w-[120px] bg-slate-800">Laporan Pekerjaan Selesai</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-300 bg-white">
-              {filteredPivotData.length > 0 ? (
-                filteredPivotData.map((row, idx) => {
-                  return (
-                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-3 py-3 border-r border-slate-300 text-left font-black text-slate-900 uppercase">
-                        {row.petugas}
-                      </td>
-                      <td className="px-3 py-3 border-r border-slate-300 text-left font-extrabold text-[10px] text-slate-500 uppercase">
-                        {row.ulp}
-                      </td>
-                      {categories.map((cat) => {
-                        const count = row.counts[cat.index];
-                        return (
-                          <td 
-                            key={cat.index} 
-                            onClick={() => count > 0 ? openModalForCell(row.petugas, row.ulp, cat.index, cat.label) : null}
-                            className={`px-2 py-3 border-r border-slate-300 text-center text-xs tabular-nums transition-colors ${
-                              count > 0 
-                                ? "cursor-pointer hover:bg-rose-50 text-rose-600 font-extrabold hover:underline" 
-                                : "text-slate-350 font-normal"
-                            }`}
-                          >
-                            {count > 0 ? count : "-"}
-                          </td>
-                        );
-                      })}
-                      {/* Total column */}
-                      <td 
-                        onClick={() => row.total > 0 ? openModalForCell(row.petugas, row.ulp, null) : null}
-                        className="px-2 py-3 text-center text-xs font-black bg-rose-50 text-rose-700 border-l border-slate-300 cursor-pointer hover:bg-rose-100 hover:underline"
-                      >
-                        {row.total}
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={15} className="text-center py-12 text-slate-400 font-bold uppercase tracking-wider bg-slate-50/50">
-                    Tidak ada data petugas yang cocok dengan filters
-                  </td>
+        <div className="px-5 pb-5 flex flex-col gap-4">
+          {/* Pivot Matrix Table Wrapper */}
+          <div className="overflow-x-auto border border-slate-300 rounded-xl custom-scrollbar shadow-inner">
+            <table className="w-full text-center border-collapse text-[11px] font-semibold text-slate-800 min-w-[1300px]">
+              <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#06b6d4] to-[#1b3d5d]">
+                {/* Row 1 Headers */}
+                <tr className="text-white uppercase font-black text-[10px] tracking-wider bg-transparent">
+                  <th rowSpan={2} className="p-0.5 min-w-[180px]">
+                    <div className="bg-[#3b82f6] py-4 px-4 rounded-xl h-full flex items-center justify-start border border-white/10 uppercase font-black text-[10px] tracking-wider">PETUGAS</div>
+                  </th>
+                  <th rowSpan={2} className="p-0.5 min-w-[120px]">
+                    <div className="bg-[#eab308] py-4 px-4 rounded-xl h-full flex items-center justify-start border border-white/10 uppercase font-black text-[10px] tracking-wider">ULP</div>
+                  </th>
+                  <th rowSpan={2} className="p-0.5 min-w-[95px] max-w-[110px]">
+                    <div className="bg-[#f43f5e] py-4 px-2 rounded-xl h-full flex items-center justify-center border border-white/10 whitespace-normal leading-tight text-[9px] uppercase font-black">TOTAL ANOMALI</div>
+                  </th>
+                  <th colSpan={12} className="p-0.5">
+                    <div className="bg-[#1b3d5d] py-2 rounded-xl border border-white/10 tracking-widest text-slate-100 uppercase font-black text-[10px]">KETERANGAN ANOMALI</div>
+                  </th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+                {/* Row 2 Sub-headers with compact width and word wrapping */}
+                <tr className="text-white uppercase text-[8px] font-black tracking-tight bg-transparent">
+                  <th className="p-0.5 min-w-[60px] max-w-[80px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">CCTV</div></th>
+                  <th className="p-0.5 min-w-[70px] max-w-[85px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">Rambu Kerja</div></th>
+                  <th className="p-0.5 min-w-[50px] max-w-[60px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">PS4</div></th>
+                  <th className="p-0.5 min-w-[85px] max-w-[95px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">APD Tunjuk Sebut</div></th>
+                  <th className="p-0.5 min-w-[75px] max-w-[90px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">Konfirmasi CCV</div></th>
+                  <th className="p-0.5 min-w-[100px] max-w-[115px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight text-[8px]">Kelengkapan Alat Kerja & Material</div></th>
+                  <th className="p-0.5 min-w-[60px] max-w-[75px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">WP & JSA</div></th>
+                  <th className="p-0.5 min-w-[105px] max-w-[125px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight text-[8px]">Laporan Yandal ke HSSE Sebelum Bekerja</div></th>
+                  <th className="p-0.5 min-w-[75px] max-w-[90px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">Safety Briefing</div></th>
+                  <th className="p-0.5 min-w-[80px] max-w-[95px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">Antisipasi tersengat Listrik</div></th>
+                  <th className="p-0.5 min-w-[80px] max-w-[95px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">Antisipasi Terjatuh dari Ketinggian</div></th>
+                  <th className="p-0.5 min-w-[80px] max-w-[95px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">Laporan Pekerjaan Selesai</div></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-300 bg-white">
+                {filteredPivotData.length > 0 ? (
+                  filteredPivotData.map((row, idx) => {
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-3 py-3 border-r border-slate-300 text-left font-black text-slate-900 uppercase">
+                          {row.petugas}
+                        </td>
+                        <td className="px-3 py-3 border-r border-slate-300 text-left font-extrabold text-[10px] text-slate-500 uppercase">
+                          {row.ulp}
+                        </td>
+                        {/* Total column */}
+                        <td 
+                          onClick={() => row.total > 0 ? openModalForCell(row.petugas, row.ulp, null) : null}
+                          className="px-2 py-3 text-center text-xs font-black bg-rose-50 text-rose-700 border-r border-slate-300 cursor-pointer hover:bg-rose-100 hover:underline"
+                        >
+                          {row.total}
+                        </td>
+                        {categories.map((cat) => {
+                          const count = row.counts[cat.index];
+                          return (
+                            <td 
+                              key={cat.index} 
+                              onClick={() => count > 0 ? openModalForCell(row.petugas, row.ulp, cat.index, cat.label) : null}
+                              className={`px-2 py-3 border-r border-slate-300 text-center text-xs tabular-nums transition-colors ${
+                                count > 0 
+                                  ? "cursor-pointer hover:bg-rose-50 text-rose-600 font-extrabold hover:underline" 
+                                  : "text-slate-350 font-normal"
+                              }`}
+                            >
+                              {count > 0 ? count : "-"}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={15} className="text-center py-12 text-slate-400 font-bold uppercase tracking-wider bg-slate-50/50">
+                      Tidak ada data petugas yang cocok dengan filters
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Total info badge footer */}
+          <div className="flex items-center justify-between border-t border-slate-150 pt-1" id="pivot_pagination_bar">
+            <span className="text-[10px] text-slate-500 font-bold uppercase">
+              Total Terdeteksi: <span className="text-blue-600 font-black">{filteredPivotData.length}</span> Petugas • Semua data dimuat dalam 1 halaman / scrollable view
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Section 3: Tabel Per ULP as requested with exactly matched headers (without PETUGAS column) */}
+      <div id="pivot_ulp_section" className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col gap-4">
+        <div className="px-5 py-4 bg-gradient-to-r from-[#1b3d5d] to-[#06b6d4] text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
+          <div>
+            <h3 className="text-xs font-black tracking-widest text-white uppercase flex items-center gap-1.5">
+              <Building2 size={14} className="text-cyan-300" />
+              REKAPITULASI ANOMALI PER ULP
+            </h3>
+            <p className="text-[10px] text-cyan-100 font-bold uppercase mt-0.5 opacity-80">
+              Diurutkan dari total temuan kasus anomali terbanyak
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Export Pivot Button for ULP */}
+            <button
+              onClick={handleExportUlpPivotExcel}
+              className="flex items-center gap-1 bg-white hover:bg-white/90 text-[#1b3d5d] px-3.5 py-1.5 rounded-xl text-[9px] font-black tracking-widest uppercase transition-all active:scale-95 shadow-md"
+            >
+              <Download size={10} className="stroke-[3]" />
+              EXPORT MATRIX ULP
+            </button>
+          </div>
         </div>
 
-        {/* Total info badge footer */}
-        <div className="flex items-center justify-between border-t border-slate-150 pt-3" id="pivot_pagination_bar">
-          <span className="text-[10px] text-slate-500 font-bold uppercase">
-            Total Terdeteksi: <span className="text-rose-600 font-black">{filteredPivotData.length}</span> Petugas • Semua data dimuat dalam 1 halaman / scrollable view
-          </span>
+        <div className="px-5 pb-5 flex flex-col gap-4">
+          {/* Pivot Matrix Table Wrapper for ULP */}
+          <div className="overflow-x-auto border border-slate-300 rounded-xl custom-scrollbar shadow-inner">
+            <table className="w-full text-center border-collapse text-[11px] font-semibold text-slate-800 min-w-[1100px]">
+              <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#1b3d5d] to-[#06b6d4]">
+                {/* Row 1 Headers */}
+                <tr className="text-white uppercase font-black text-[10px] tracking-wider bg-transparent">
+                  <th rowSpan={2} className="p-0.5 min-w-[150px]">
+                    <div className="bg-[#3b82f6] py-4 px-4 rounded-xl h-full flex items-center justify-start border border-white/10 uppercase font-black text-[10px] tracking-wider">ULP</div>
+                  </th>
+                  <th rowSpan={2} className="p-0.5 min-w-[95px] max-w-[110px]">
+                    <div className="bg-[#f43f5e] py-4 px-2 rounded-xl h-full flex items-center justify-center border border-white/10 whitespace-normal leading-tight text-[9px] uppercase font-black">TOTAL ANOMALI</div>
+                  </th>
+                  <th colSpan={12} className="p-0.5">
+                    <div className="bg-[#1b3d5d] py-2 rounded-xl border border-white/10 tracking-widest text-slate-100 uppercase font-black text-[10px]">KETERANGAN ANOMALI</div>
+                  </th>
+                </tr>
+                {/* Row 2 Sub-headers with compact width and word wrapping */}
+                <tr className="text-white uppercase text-[8px] font-black tracking-tight bg-transparent">
+                  <th className="p-0.5 min-w-[60px] max-w-[80px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">CCTV</div></th>
+                  <th className="p-0.5 min-w-[70px] max-w-[85px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">Rambu Kerja</div></th>
+                  <th className="p-0.5 min-w-[50px] max-w-[60px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">PS4</div></th>
+                  <th className="p-0.5 min-w-[85px] max-w-[95px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">APD Tunjuk Sebut</div></th>
+                  <th className="p-0.5 min-w-[75px] max-w-[90px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">Konfirmasi CCV</div></th>
+                  <th className="p-0.5 min-w-[100px] max-w-[115px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight text-[8px]">Kelengkapan Alat Kerja & Material</div></th>
+                  <th className="p-0.5 min-w-[60px] max-w-[75px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">WP & JSA</div></th>
+                  <th className="p-0.5 min-w-[105px] max-w-[125px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight text-[8px]">Laporan Yandal ke HSSE Sebelum Bekerja</div></th>
+                  <th className="p-0.5 min-w-[75px] max-w-[90px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">Safety Briefing</div></th>
+                  <th className="p-0.5 min-w-[80px] max-w-[95px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">Antisipasi tersengat Listrik</div></th>
+                  <th className="p-0.5 min-w-[80px] max-w-[95px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">Antisipasi Terjatuh dari Ketinggian</div></th>
+                  <th className="p-0.5 min-w-[80px] max-w-[95px]"><div className="bg-slate-800/80 p-2 rounded-lg border border-white/10 whitespace-normal leading-tight">Laporan Pekerjaan Selesai</div></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-300 bg-white">
+                {filteredUlpPivotData.length > 0 ? (
+                  filteredUlpPivotData.map((row, idx) => {
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-3 py-3 border-r border-slate-300 text-left font-black text-slate-900 uppercase bg-slate-50">
+                          {row.ulp}
+                        </td>
+                        {/* Total column */}
+                        <td 
+                          onClick={() => row.total > 0 ? openModalForUlpCell(row.ulp, null) : null}
+                          className="px-2 py-3 text-center text-xs font-black bg-rose-50 text-rose-700 border-r border-slate-300 cursor-pointer hover:bg-rose-100 hover:underline"
+                        >
+                          {row.total}
+                        </td>
+                        {categories.map((cat) => {
+                          const count = row.counts[cat.index];
+                          return (
+                            <td 
+                              key={cat.index} 
+                              onClick={() => count > 0 ? openModalForUlpCell(row.ulp, cat.index, cat.label) : null}
+                              className={`px-2 py-3 border-r border-slate-300 text-center text-xs tabular-nums transition-colors ${
+                                count > 0 
+                                  ? "cursor-pointer hover:bg-rose-50 text-rose-600 font-extrabold hover:underline" 
+                                  : "text-slate-350 font-normal"
+                              }`}
+                            >
+                              {count > 0 ? count : "-"}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={14} className="text-center py-12 text-slate-400 font-bold uppercase tracking-wider bg-slate-50/50">
+                      Tidak ada data ULP yang cocok dengan filters
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Total info badge footer */}
+          <div className="flex items-center justify-between border-t border-slate-150 pt-1" id="ulp_pivot_footer_bar">
+            <span className="text-[10px] text-slate-500 font-bold uppercase">
+              Total Terdeteksi: <span className="text-blue-600 font-black">{filteredUlpPivotData.length}</span> ULP Unit • Semua data dimuat dalam 1 halaman / scrollable view
+            </span>
+          </div>
         </div>
+      </div>
+
+      {/* Visual Analytics Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-2" id="ulp_charts_section">
+        
+        {/* Left Chart: KETERANGAN ANOMALI (Rose / Radar style chart) */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col h-[485px]">
+          <div className="mb-4">
+            <h3 className="text-xs font-black tracking-widest text-slate-900 uppercase flex items-center gap-1.5">
+              <PieIcon size={14} className="text-cyan-500 font-bold" />
+              KETERANGAN ANOMALI
+            </h3>
+            <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
+              Distribusi frekuensi temuan berdasarkan 12 kategori integritas (Rose/Radar)
+            </p>
+          </div>
+          <div className="flex-1 w-full min-h-0 flex items-center justify-center">
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart cx="50%" cy="50%" outerRadius="68%" data={keteranganAnomaliChartData}>
+                <PolarGrid stroke="#e2e8f0" strokeDasharray="4 4" />
+                <PolarAngleAxis 
+                  dataKey="shortName" 
+                  tick={{ fill: '#475569', fontSize: 8.5, fontWeight: 700 }}
+                />
+                <PolarRadiusAxis 
+                  angle={90} 
+                  domain={[0, 'auto']} 
+                  tick={{ fill: '#475569', fontSize: 9, fontWeight: 500 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Radar 
+                  name="Jumlah Kasus" 
+                  dataKey="count" 
+                  stroke="#0284c7" 
+                  fill="#06b6d4" 
+                  fillOpacity={0.4} 
+                />
+                <RechartsTooltip content={<CustomRadarTooltip />} />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Right Chart: ANOMALI PER ULP (Bar/Batang chart) */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col h-[485px]">
+          <div className="mb-4">
+            <h3 className="text-xs font-black tracking-widest text-slate-900 uppercase flex items-center gap-1.5">
+              <BarChart3 size={14} className="text-cyan-500 font-bold" />
+              ANOMALI PER ULP
+            </h3>
+            <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
+              Perbandingan total temuan kasus kesalahan antar Unit Layanan Pelanggan (Bar)
+            </p>
+          </div>
+          <div className="flex-1 w-full min-h-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart 
+                data={ulpChartData} 
+                margin={{ top: 20, right: 10, left: -20, bottom: 20 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis 
+                  dataKey="ulpName" 
+                  tick={{ fill: '#475569', fontSize: 8, fontWeight: 800 }} 
+                  tickLine={false} 
+                  axisLine={false}
+                  interval={0}
+                />
+                <YAxis 
+                  tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 500 }} 
+                  tickLine={false} 
+                  axisLine={false} 
+                />
+                <RechartsTooltip cursor={{ fill: 'rgba(6, 182, 212, 0.04)' }} content={<CustomBarTooltip />} />
+                <Bar dataKey="total" radius={[8, 8, 0, 0]} fill="#0f172a" maxBarSize={45}>
+                  {ulpChartData.map((entry, index) => {
+                    return (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={index === 0 ? '#06b6d4' : index % 2 === 0 ? '#1b3d5d' : '#3b82f6'} 
+                      />
+                    );
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
       </div>
 
       {/* Bespoke Universal Interactive Details Modal */}
@@ -551,16 +1020,16 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
             >
               
               {/* Modal Header */}
-              <div className="bg-slate-900 text-white p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800">
+              <div className="bg-gradient-to-r from-[#06b6d4] to-[#1b3d5d] text-white p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-rose-500">
+                  <div className="p-2.5 rounded-xl bg-white/15 backdrop-blur-md">
                     <Building2 size={20} />
                   </div>
                   <div>
                     <h3 className="text-xs font-black tracking-widest uppercase">
                       DETAIL DATA ANOMALI: {detailModal.title}
                     </h3>
-                    <p className="text-[9px] text-slate-400 font-bold tracking-widest uppercase">
+                    <p className="text-[9px] text-slate-200 font-bold tracking-widest uppercase">
                       {detailModal.subTitle}
                     </p>
                   </div>
@@ -576,7 +1045,7 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
                   </button>
                   <button
                     onClick={() => setDetailModal(null)}
-                    className="w-9 h-9 flex items-center justify-center hover:bg-rose-600 hover:text-white transition-colors rounded-xl bg-slate-800 text-slate-400"
+                    className="w-9 h-9 flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors rounded-xl bg-white/10 text-white"
                   >
                     <X size={18} />
                   </button>
@@ -586,7 +1055,7 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
               {/* Toolbar: Live Search & Summary stats */}
               <div className="p-4 bg-slate-50 border-b border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">
-                  Menampilkan <span className="text-rose-600 font-extrabold">{filteredModalRows.length}</span> data dari total {detailModal.rows.length}
+                  Menampilkan <span className="text-blue-600 font-extrabold">{filteredModalRows.length}</span> data dari total {detailModal.rows.length}
                 </p>
                 
                 <div className="relative w-full sm:w-72">
@@ -601,12 +1070,12 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
                       setCurrentPage(1); // reset to page 1
                     }}
                     placeholder="Cari No. Laporan, Petugas, Deskripsi..."
-                    className="w-full pl-9 pr-4 py-2 border border-gray-200 focus:border-rose-450 focus:outline-none bg-white text-xs font-bold text-gray-700 rounded-xl transition-all shadow-inner"
+                    className="w-full pl-9 pr-4 py-2 border border-gray-200 focus:border-blue-400 focus:outline-none bg-white text-xs font-bold text-gray-700 rounded-xl transition-all shadow-inner"
                   />
                   {modalSearch && (
                     <button 
-                      onClick={() => { setModalSearch(''); setCurrentPage(1); }}
-                      className="absolute inset-y-0 right-3 flex items-center hover:text-red-500 text-gray-400 text-xs font-black"
+                       onClick={() => { setModalSearch(''); setCurrentPage(1); }}
+                       className="absolute inset-y-0 right-3 flex items-center hover:text-red-500 text-gray-400 text-xs font-black"
                     >
                       ×
                     </button>

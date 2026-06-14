@@ -588,6 +588,8 @@ export class GoogleSheetsService {
       rawRow: any[];
     }>();
 
+    const reportIdToOfficerAndUlp = new Map<string, { name: string; ulp: string }>();
+
     const rawWoRowsFull: any[][] = [];
     const officerRptOverSlaCount = new Map<string, number>();
     const officerRctOverSlaCount = new Map<string, number>();
@@ -624,6 +626,9 @@ export class GoogleSheetsService {
       const officerUlp = nameKey ? officerToUlp.get(nameKey) : "";
       const ulpName = officerUlp || ulpNameLookup || ulpNameFromWo || "Unknown";
       const poskoName = woPoskoValue || ulpName;
+
+      // Populate reportIdToOfficerAndUlp map
+      reportIdToOfficerAndUlp.set(reportId, { name: properName, ulp: ulpName });
 
       const standardizedDisplayUlp = getCanonicalUlpName(standardizeUlpName(ulpName));
       const standardizedDisplayPosko = getCanonicalUlpName(standardizeUlpName(poskoName));
@@ -978,6 +983,27 @@ export class GoogleSheetsService {
       const taskId = String(row[poIdIdx] || "").trim();
       if (!taskId) return;
 
+      const reportId = this.normalizeForMatch(taskId);
+      if (reportId) {
+        let cleanName = String(row[poNameIdx] || "").trim();
+        if (cleanName.includes("_")) {
+          const splitParts = cleanName.split("_");
+          if (/^\d+$/.test(splitParts[0])) {
+            cleanName = splitParts.slice(1).join(" ").trim();
+          }
+        }
+        const properName = nameKey ? (officerToName.get(nameKey) || cleanName) : cleanName;
+        
+        if (!reportIdToOfficerAndUlp.has(reportId)) {
+          reportIdToOfficerAndUlp.set(reportId, { name: properName, ulp: ulpName });
+        } else {
+          const existing = reportIdToOfficerAndUlp.get(reportId)!;
+          if (existing.name && properName && !existing.name.toUpperCase().includes(properName.toUpperCase())) {
+            existing.name = `${existing.name}, ${properName}`;
+          }
+        }
+      }
+
       const cctvVal = row.length > poCctvIdx ? String(row[poCctvIdx] || "").trim().toUpperCase() : "";
       const isCctv = cctvVal.includes("CCTV");
 
@@ -1102,141 +1128,208 @@ export class GoogleSheetsService {
     let hasActualAnomaliSheet = false;
 
     if (anomaliSheetRows && anomaliSheetRows.length > 1) {
-      // Find headers in target sheet
-      const targets = ["No Laporan", "Tgl Lapor", "Nama Petugas", "ULP", "Jenis Anomali", "Deskripsi", "RPT", "RCT"];
-      const { headerRowIdx: sheetAnomaliHeaderIdx, colIndices: sheetAnomaliCols } = this.findHeaderAndCols(anomaliSheetRows, targets);
-      
-      // Always treat as valid sheet if present, with resilient fallback mappings
+      // Always treat as valid sheet if present
       hasActualAnomaliSheet = true;
       
-      if (sheetAnomaliHeaderIdx !== -1) {
-        const headerRow = anomaliSheetRows[sheetAnomaliHeaderIdx].map((h: any) => String(h || "").trim().toLowerCase());
-        
-        // Match columns loosely if they are not yet matched
-        if (sheetAnomaliCols[0] === -1) {
-          sheetAnomaliCols[0] = headerRow.findIndex(h => h.includes("no") || h.includes("id") || h.includes("laporan") || h.includes("tugas"));
-        }
-        if (sheetAnomaliCols[1] === -1) {
-          sheetAnomaliCols[1] = headerRow.findIndex(h => h.includes("tgl") || h.includes("tanggal") || h.includes("date") || h.includes("lapor"));
-        }
-        if (sheetAnomaliCols[2] === -1) {
-          sheetAnomaliCols[2] = headerRow.findIndex(h => h.includes("petugas") || h.includes("nama") || h.includes("name") || h.includes("officer"));
-        }
-        if (sheetAnomaliCols[3] === -1) {
-          sheetAnomaliCols[3] = headerRow.findIndex(h => h.includes("ulp") || h.includes("unit") || h.includes("posko"));
-        }
-        if (sheetAnomaliCols[4] === -1) {
-          sheetAnomaliCols[4] = headerRow.findIndex(h => h.includes("jenis") || h.includes("anomali") || h.includes("tipe") || h.includes("type"));
-        }
-        if (sheetAnomaliCols[5] === -1) {
-          sheetAnomaliCols[5] = headerRow.findIndex(h => h.includes("deskripsi") || h.includes("desc") || h.includes("keterangan") || h.includes("temuan") || h.includes("detail"));
-        }
-        if (sheetAnomaliCols[6] === -1) {
-          sheetAnomaliCols[6] = headerRow.findIndex(h => h === "rpt" || h.includes("rpt"));
-        }
-        if (sheetAnomaliCols[7] === -1) {
-          sheetAnomaliCols[7] = headerRow.findIndex(h => h === "rct" || h.includes("rct"));
+      // Dynamic header mapping specifically for the ANOMALI sheet columns
+      let sheetAnomaliHeaderIdx = -1;
+      for (let i = 0; i < Math.min(10, anomaliSheetRows.length); i++) {
+        const r = anomaliSheetRows[i].map(c => String(c || "").trim().toLowerCase());
+        if (r.some(c => c.includes("nomor wo") || c.includes("posko ulp") || c === "anomali")) {
+          sheetAnomaliHeaderIdx = i;
+          break;
         }
       }
 
-      // Hard positional fallbacks if some column headers are totally missing
-      if (sheetAnomaliCols[0] === -1) sheetAnomaliCols[0] = 0;
-      if (sheetAnomaliCols[1] === -1) sheetAnomaliCols[1] = 1;
-      if (sheetAnomaliCols[2] === -1) sheetAnomaliCols[2] = 2;
-      if (sheetAnomaliCols[3] === -1) sheetAnomaliCols[3] = 3;
-      if (sheetAnomaliCols[4] === -1) sheetAnomaliCols[4] = 4;
-      if (sheetAnomaliCols[5] === -1) sheetAnomaliCols[5] = 5;
-      if (sheetAnomaliCols[6] === -1) sheetAnomaliCols[6] = 6;
-      if (sheetAnomaliCols[7] === -1) sheetAnomaliCols[7] = 7;
+      let idCol = 1;      // Fallback column indices based on physical sheet headers
+      let ulpCol = 2;
+      let dateCol = 4;
+      let anomaliCol = 8;
+      let descCol = 9;
 
-      // Find column index for "Anomali" (Column I) dynamically, fallback to index 8
-      let anomaliColIdx = 8;
       if (sheetAnomaliHeaderIdx !== -1) {
-        const headerRow = anomaliSheetRows[sheetAnomaliHeaderIdx];
-        const foundIdx = headerRow.findIndex((h, idx) => {
-          const val = String(h || "").trim().toLowerCase();
-          return val === "anomali" || val.includes("kolom anomali") || (val.includes("anomali") && idx !== sheetAnomaliCols[4]);
+        const headers = anomaliSheetRows[sheetAnomaliHeaderIdx].map((h: any) => String(h || "").trim().toLowerCase());
+        headers.forEach((h, idx) => {
+          if (h === "nomor wo" || h === "no wo" || h === "no laporan" || h.includes("nomor wo") || h.includes("no wo") || h.includes("no laporan") || h.includes("wo id")) {
+            idCol = idx;
+          }
+          if (h === "ulp" || h === "unit" || h === "posko ulp" || h.includes("ulp") || h.includes("posko") || h.includes("unit")) {
+            if (h === "posko ulp" || h === "ulp" || h === "unit") {
+              ulpCol = idx;
+            } else if (ulpCol === 2 || ulpCol === -1) {
+              ulpCol = idx;
+            }
+          }
+          if (h === "tanggal wo" || h === "tanggal" || h.includes("tanggal wo") || h.includes("tgl lapor") || h.includes("tanggal")) {
+            dateCol = idx;
+          }
+          if ((h === "anomali" || h === "status anomali" || h.includes("anomali")) && 
+              !h.includes("keterangan") && !h.includes("deskripsi") && !h.includes("desc") && 
+              !h.includes("detail") && !h.includes("tipe") && !h.includes("jenis")) {
+            anomaliCol = idx;
+          }
+          if (h.includes("keterangan") || h.includes("deskripsi") || h.includes("desc") || h.includes("detail")) {
+            descCol = idx;
+          }
         });
-        if (foundIdx !== -1) {
-          anomaliColIdx = foundIdx;
-        }
       }
 
       const startIdx = sheetAnomaliHeaderIdx !== -1 ? sheetAnomaliHeaderIdx + 1 : 1;
       const validRows = anomaliSheetRows.slice(startIdx);
         
-        validRows.forEach((row) => {
-          if (row.length === 0 || !row[sheetAnomaliCols[0] !== -1 ? sheetAnomaliCols[0] : 0]) return; // Skip empty rows
-          
-          // Only include rows where the column I (index 8/anomaliColIdx) has value "Anomali" (case-insensitive)
-          const cellVal = anomaliColIdx < row.length ? String(row[anomaliColIdx] || "").trim().toLowerCase() : "";
-          if (cellVal !== "anomali") return;
+      validRows.forEach((row) => {
+        if (row.length === 0 || row.length <= Math.max(idCol, anomaliCol)) return; // Skip empty/under-length rows
+        
+        // Match value 'ANOMALI' in the designated 'Anomali' column (Column I)
+        const cellVal = String(row[anomaliCol] || "").trim().toLowerCase();
+        if (cellVal !== "anomali") return;
 
-          const id = sheetAnomaliCols[0] !== -1 ? String(row[sheetAnomaliCols[0]] || "").trim() : "";
-          const tglRaw = sheetAnomaliCols[1] !== -1 ? String(row[sheetAnomaliCols[1]] || "").trim() : "";
-          const name = sheetAnomaliCols[2] !== -1 ? String(row[sheetAnomaliCols[2]] || "").trim() : "TIDAK TERIDENTIFIKASI";
-          const ulpVal = sheetAnomaliCols[3] !== -1 ? String(row[sheetAnomaliCols[3]] || "").trim() : "";
-          const jenis = sheetAnomaliCols[4] !== -1 ? String(row[sheetAnomaliCols[4]] || "").trim() : "Lainnya";
-          const desc = sheetAnomaliCols[5] !== -1 ? String(row[sheetAnomaliCols[5]] || "").trim() : "";
-          
-          const rptRaw = sheetAnomaliCols[6] !== -1 ? row[sheetAnomaliCols[6]] : "";
-          const rctRaw = sheetAnomaliCols[7] !== -1 ? row[sheetAnomaliCols[7]] : "";
-          
-          const rptVal = rptRaw !== "" && rptRaw !== undefined && rptRaw !== null ? Math.round(parseFloat(String(rptRaw)) || 0) : "-";
-          const rctVal = rctRaw !== "" && rctRaw !== undefined && rctRaw !== null ? Math.round(parseFloat(String(rctRaw)) || 0) : "-";
+        const id = String(row[idCol] || "").trim();
+        const tglRaw = String(row[dateCol] || "").trim();
+        
+        // Use Timestamp fallback if TANGGAL WO is empty
+        let tglRawStr = tglRaw;
+        if (!tglRawStr || tglRawStr === "" || tglRawStr === "-") {
+          tglRawStr = String(row[0] || "").trim();
+        }
 
-          // Parse and apply filters
-          const targetUlpFilter = selectedUlp && selectedUlp !== "ALL" ? getCanonicalUlpName(standardizeUlpName(selectedUlp)) : null;
-          const uKey = getCanonicalUlpName(standardizeUlpName(ulpVal));
-          const isWithinUlpFilter = !targetUlpFilter || uKey === targetUlpFilter;
-          if (!isWithinUlpFilter) return;
+        // Dynamically lookup real officer name and ULP from the map we built across WO and PO
+        let name = "TIDAK TERIDENTIFIKASI";
+        let ulpVal = "";
 
-          // Date filter
-          if (startDate || endDate) {
-            const parsedLaporDate = this.parseSheetDate(tglRaw);
-            if (parsedLaporDate) {
-              if (startDate && parsedLaporDate < new Date(startDate)) return;
-              if (endDate) {
-                const endLimit = new Date(endDate);
-                endLimit.setHours(23, 59, 59, 999);
-                if (parsedLaporDate > endLimit) return;
-              }
+        const normalId = this.normalizeForMatch(id);
+        const solvedInfo = reportIdToOfficerAndUlp.get(normalId);
+        if (solvedInfo) {
+          name = solvedInfo.name || "TIDAK TERIDENTIFIKASI";
+          ulpVal = solvedInfo.ulp || "";
+        }
+
+        if (!ulpVal && ulpCol !== -1 && ulpCol < row.length) {
+          ulpVal = String(row[ulpCol] || "").trim();
+        }
+
+        // Parse and apply filters
+        const targetUlpFilter = selectedUlp && selectedUlp !== "ALL" ? getCanonicalUlpName(standardizeUlpName(selectedUlp)) : null;
+        const uKey = getCanonicalUlpName(standardizeUlpName(ulpVal));
+        const isWithinUlpFilter = !targetUlpFilter || uKey === targetUlpFilter;
+
+        // Date filter (applied to the full page dataset)
+        if (startDate || endDate) {
+          const parsedLaporDate = this.parseSheetDate(tglRawStr);
+          if (parsedLaporDate && !isWithinRange(parsedLaporDate)) {
+            return;
+          }
+        }
+
+        // Scan safety columns dynamically for "Tidak Sesuai" checklist items
+        const violations: { jenis: string; desc: string }[] = [];
+        const safetyChecklists = [
+          { name: "CCTV", idx: 10 },
+          { name: "Rambu Kerja", idx: 11 },
+          { name: "PS4", idx: 12 },
+          { name: "APD Tunjuk Sebut", idx: 13 },
+          { name: "Konfirmasi CCV", idx: 14 },
+          { name: "Kelengkapan Alat Kerja & Material", idx: 15 },
+          { name: "WP & JSA", idx: 16 },
+          { name: "Laporan Yandal ke HSSE Sebelum Bekerja", idx: 17 },
+          { name: "Safety Briefing", idx: 18 },
+          { name: "Antisipasi tersengat Listrik", idx: 19 },
+          { name: "Antisipasi Terjatuh dari Ketinggian", idx: 20 },
+          { name: "Laporan Pekerjaan Selesai", idx: 21 },
+        ];
+
+        if (sheetAnomaliHeaderIdx !== -1) {
+          const actualRowHeaders = anomaliSheetRows[sheetAnomaliHeaderIdx];
+          safetyChecklists.forEach(sc => {
+            const foundIdx = actualRowHeaders.findIndex(h => String(h || "").trim().toLowerCase() === sc.name.toLowerCase());
+            if (foundIdx !== -1) {
+              sc.idx = foundIdx;
+            }
+          });
+        }
+
+        safetyChecklists.forEach(sc => {
+          if (sc.idx !== -1 && sc.idx < row.length) {
+            const cellValRaw = String(row[sc.idx] || "").trim().toLowerCase();
+            if (cellValRaw === "tidak sesuai") {
+              const ketAnomali = descCol !== -1 && descCol < row.length ? String(row[descCol] || "").trim() : "";
+              violations.push({
+                jenis: sc.name,
+                desc: ketAnomali || "Tidak Sesuai"
+              });
             }
           }
+        });
 
-          totalAnomali++;
+        // Fallback to "Lainnya" if no "Tidak Sesuai" columns were found but the row is indeed an "ANOMALI"
+        if (violations.length === 0) {
+          const ketAnomali = descCol !== -1 && descCol < row.length ? String(row[descCol] || "").trim() : "";
+          violations.push({
+            jenis: "Lainnya",
+            desc: ketAnomali || "Laporan berstatus ANOMALI"
+          });
+        }
+
+        // Helper to check if type matches safety checklist items
+        const isSafetyAnomalyType = (type: string) => {
+          const lower = type.toLowerCase();
+          return lower.includes("cctv") || lower.includes("rambu") || lower.includes("ps4") || lower.includes("apd") || 
+                 lower.includes("ccv") || lower.includes("alat kerja") || lower.includes("wp") || lower.includes("jsa") || 
+                 lower.includes("hsse") || lower.includes("yandal sebelum") || lower.includes("briefing") || 
+                 lower.includes("listrik") || lower.includes("sengat") || lower.includes("jatuh") || 
+                 lower.includes("selesai") || lower.includes("check");
+        };
+
+        // Register combined violation for this row - each ANOMALI row is exactly ONE report/job
+        const combinedJenis = violations.map(v => v.jenis).join(", ");
+        const combinedDesc = violations.map(v => v.desc).filter((vDesc, idx, self) => vDesc && self.indexOf(vDesc) === idx).join("; ");
+
+        anomaliList.push([
+          id,
+          tglRawStr || "-",
+          name,
+          uKey || "UNKNOWN",
+          combinedJenis,
+          combinedDesc || "-",
+          "-", // RPT
+          "-"  // RCT
+        ]);
+
+        // Increment numbers ONLY if it matches the current active sidebar ULP filter
+        if (isWithinUlpFilter) {
+          totalAnomali++; // Exactly 1 anomaly report count incremented!
           
-          // Categorize for sub-counters
-          const jenisLower = jenis.toLowerCase();
-          if (jenisLower.includes("kronologi") || jenisLower.includes("waktu")) {
-            chronologyAnomaliesCount++;
-          } else if (jenisLower.includes("check") || jenisLower.includes("check-in") || jenisLower.includes("tanpa")) {
-            missingCheckInOutCount++;
-          } else if (jenisLower.includes("ekstrim") || jenisLower.includes("durasi") || jenisLower.includes("120")) {
-            extremeDurationCount++;
-          } else if (jenisLower.includes("petugas") || jenisLower.includes("kosong")) {
-            missingOfficerCount++;
-          }
-
-          anomaliList.push([
-            id,
-            tglRaw,
-            name,
-            uKey || "UNKNOWN",
-            jenis,
-            desc,
-            rptVal,
-            rctVal
-          ]);
-
           anomaliUlpDistributionMap.set(uKey || "UNKNOWN", (anomaliUlpDistributionMap.get(uKey || "UNKNOWN") || 0) + 1);
-          anomaliTypeDistributionMap.set(jenis, (anomaliTypeDistributionMap.get(jenis) || 0) + 1);
+
+          violations.forEach(v => {
+            anomaliTypeDistributionMap.set(v.jenis, (anomaliTypeDistributionMap.get(v.jenis) || 0) + 1);
+            
+            // Categorize for sub-counters based on individual violations
+            const jenisLower = v.jenis.toLowerCase();
+            if (jenisLower.includes("kronologi") || jenisLower.includes("waktu")) {
+              chronologyAnomaliesCount++;
+            } else if (isSafetyAnomalyType(v.jenis)) {
+              missingCheckInOutCount++;
+            } else if (jenisLower.includes("ekstrim") || jenisLower.includes("durasi") || jenisLower.includes("120")) {
+              extremeDurationCount++;
+            } else if (jenisLower.includes("petugas") || jenisLower.includes("kosong")) {
+              missingOfficerCount++;
+            }
+          });
 
           const oNameUpper = name.toUpperCase();
           if (name && oNameUpper !== "UNKNOWN" && oNameUpper !== "N/A" && name !== "-" && oNameUpper !== "TIDAK TERIDENTIFIKASI") {
-            anomaliOfficerDistributionMap.set(name, (anomaliOfficerDistributionMap.get(name) || 0) + 1);
+            // Register each individual officer if they are concatenated helper, incrementing their unique anomaly count
+            const individualNames = name.split(",").map(n => n.trim());
+            individualNames.forEach(indName => {
+              const indUpper = indName.toUpperCase();
+              if (indName && indUpper !== "UNKNOWN" && indUpper !== "N/A" && indName !== "-" && indUpper !== "TIDAK TERIDENTIFIKASI") {
+                anomaliOfficerDistributionMap.set(indName, (anomaliOfficerDistributionMap.get(indName) || 0) + 1);
+              }
+            });
           }
-        });
+        }
+      });
     }
 
     if (!hasActualAnomaliSheet) {
@@ -1245,7 +1338,6 @@ export class GoogleSheetsService {
         const uKey = getCanonicalUlpName(standardizeUlpName(wo.ulp));
         
         const isWithinUlpFilter = !targetUlpFilter || uKey === targetUlpFilter;
-        if (!isWithinUlpFilter) return;
 
         const anomaliesDetected: string[] = [];
         const descriptions: string[] = [];
@@ -1259,7 +1351,6 @@ export class GoogleSheetsService {
           if (tglSelesaiParsed.getTime() < tglLaporParsed.getTime()) {
             anomaliesDetected.push("Kronologi");
             descriptions.push(`Waktu Selesai mendahului waktu Lapor (Selesai: ${formatDateTime(tglSelesaiParsed)} < Lapor: ${formatDateTime(tglLaporParsed)})`);
-            chronologyAnomaliesCount++;
           }
         }
 
@@ -1278,7 +1369,6 @@ export class GoogleSheetsService {
             else if (missingIn) desc += "Check-In kosong";
             else desc += "Check-Out kosong";
             descriptions.push(desc);
-            missingCheckInOutCount++;
           }
         }
 
@@ -1288,7 +1378,6 @@ export class GoogleSheetsService {
           const rptVal = wo.rpt >= 0 ? `${Math.round(wo.rpt)} mnt` : "N/A";
           const rctVal = wo.rct >= 0 ? `${Math.round(wo.rct)} mnt` : "N/A";
           descriptions.push(`Durasi melebihi batas wajar 120 menit (RPT: ${rptVal}, RCT: ${rctVal})`);
-          extremeDurationCount++;
         }
 
         // 4. Missing officer
@@ -1297,12 +1386,12 @@ export class GoogleSheetsService {
         if (!oName || oName === "" || oName === "-" || oNameUpper === "UNKNOWN" || oNameUpper === "N/A") {
           anomaliesDetected.push("Petugas Kosong");
           descriptions.push("Petugas penanggung jawab tidak terisi atau tidak valid");
-          missingOfficerCount++;
         }
 
         if (anomaliesDetected.length > 0) {
-          totalAnomali++;
           const textLapor = wo.rawRow[woTglLaporIdx] || wo.rawRow[woDateIdx] || wo.dateRaw || "-";
+          
+          // Always push to anomaliList
           anomaliList.push([
             wo.id,
             textLapor,
@@ -1314,14 +1403,23 @@ export class GoogleSheetsService {
             wo.rct >= 0 ? Math.round(wo.rct) : "-"
           ]);
 
-          anomaliUlpDistributionMap.set(uKey, (anomaliUlpDistributionMap.get(uKey) || 0) + 1);
+          // Filter-specific increments
+          if (isWithinUlpFilter) {
+            totalAnomali++;
+            anomaliUlpDistributionMap.set(uKey, (anomaliUlpDistributionMap.get(uKey) || 0) + 1);
 
-          anomaliesDetected.forEach(type => {
-            anomaliTypeDistributionMap.set(type, (anomaliTypeDistributionMap.get(type) || 0) + 1);
-          });
+            anomaliesDetected.forEach(type => {
+              anomaliTypeDistributionMap.set(type, (anomaliTypeDistributionMap.get(type) || 0) + 1);
+              
+              if (type === "Kronologi") chronologyAnomaliesCount++;
+              else if (type === "Tanpa Check-in/out") missingCheckInOutCount++;
+              else if (type === "Durasi Ekstrim") extremeDurationCount++;
+              else if (type === "Petugas Kosong") missingOfficerCount++;
+            });
 
-          if (wo.name && oNameUpper !== "UNKNOWN" && oNameUpper !== "N/A" && oName !== "-") {
-            anomaliOfficerDistributionMap.set(wo.name, (anomaliOfficerDistributionMap.get(wo.name) || 0) + 1);
+            if (wo.name && oNameUpper !== "UNKNOWN" && oNameUpper !== "N/A" && oName !== "-") {
+              anomaliOfficerDistributionMap.set(wo.name, (anomaliOfficerDistributionMap.get(wo.name) || 0) + 1);
+            }
           }
         }
       });
