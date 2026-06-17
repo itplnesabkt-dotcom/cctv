@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Award, TrendingUp, Users, Zap, ShieldCheck, ChevronLeft, ChevronRight, RotateCcw, PieChart as PieIcon } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
@@ -27,6 +27,19 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
     title: "",
     data: []
   });
+
+  const [modalPage, setModalPage] = useState(1);
+  const modalItemsPerPage = 30;
+
+  useEffect(() => {
+    setModalPage(1);
+  }, [modalData.data]);
+
+  const modalTotalPages = Math.ceil(modalData.data.length / modalItemsPerPage) || 1;
+  const paginatedModalData = modalData.data.slice(
+    (modalPage - 1) * modalItemsPerPage,
+    modalPage * modalItemsPerPage
+  );
 
   const sidebarCards = [
     { label: "% KOMULATIF", value: `${totalPct}%`, color: totalPct === 100 ? "bg-emerald-500" : "bg-red-500", textColor: "text-white", clickable: false },
@@ -103,8 +116,8 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                     </tr>
                   </thead>
                   <tbody className="text-xs font-black italic uppercase text-brand-primary">
-                    {modalData.data.length > 0 ? (
-                      modalData.data.map((row, i) => (
+                    {paginatedModalData.length > 0 ? (
+                      paginatedModalData.map((row, i) => (
                         <tr key={i} className="hover:bg-gray-50 border-b border-gray-100 transition-colors">
                           {row.map((cell, j) => (
                             <td key={j} className="p-4 whitespace-nowrap">{cell}</td>
@@ -121,8 +134,33 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
               </div>
             </div>
             
-            <div className="p-4 border-t border-gray-100 bg-white text-right shrink-0">
-              <span className="text-[10px] font-black text-gray-400 uppercase mr-4">MENAMPILKAN {modalData.data.length} DATA</span>
+            <div className="p-4 border-t border-gray-100 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+              <span className="text-[10px] font-black text-gray-400 uppercase">
+                MENAMPILKAN {Math.min(modalPage * modalItemsPerPage, modalData.data.length)} DARI {modalData.data.length} DATA
+              </span>
+              
+              {modalTotalPages > 1 && (
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-1 shadow-sm font-sans">
+                  <button
+                    onClick={() => setModalPage(prev => Math.max(prev - 1, 1))}
+                    disabled={modalPage === 1}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[10px] text-brand-primary font-black disabled:opacity-35 disabled:cursor-not-allowed transition-all hover:bg-slate-50"
+                  >
+                    PREV
+                  </button>
+                  <span className="text-[10px] font-black tracking-tight text-slate-600 px-2 min-w-[75px] text-center">
+                    HLM {modalPage} / {modalTotalPages}
+                  </span>
+                  <button
+                    onClick={() => setModalPage(prev => Math.min(modalTotalPages, prev + 1))}
+                    disabled={modalPage === modalTotalPages}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[10px] text-brand-primary font-black disabled:opacity-35 disabled:cursor-not-allowed transition-all hover:bg-slate-50"
+                  >
+                    NEXT
+                  </button>
+                </div>
+              )}
+
               <button 
                 onClick={() => setModalData(prev => ({ ...prev, isOpen: false }))}
                 className="bg-brand-primary text-white px-6 py-2 rounded-xl text-xs font-black uppercase italic tracking-widest hover:bg-brand-primary/90 transition-all active:scale-95 shadow-lg shadow-brand-primary/20"

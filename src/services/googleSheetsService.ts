@@ -30,6 +30,11 @@ export class GoogleSheetsService {
     endDate?: string
   } | null = null;
 
+  // Fully compiled dashboard data cache for instant UI filter changes
+  private static processedDataCache = new Map<string, { data: DashboardData; timestamp: number }>();
+  // Parsed date cache to eliminate heavy repeating Date construction & regex work
+  private static parsedDateCache = new Map<string, Date | null>();
+
   private static async fetchSheetDataRaw(sheetName: string): Promise<any[][]> {
     const endpoints = [
       `https://docs.google.com/spreadsheets/d/${this.SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`,
@@ -83,6 +88,21 @@ export class GoogleSheetsService {
   }
 
   private static parseSheetDate(dateStr: string): Date | null {
+    if (!dateStr) return null;
+    const str = String(dateStr).trim();
+    if (!str) return null;
+    
+    const cached = this.parsedDateCache.get(str);
+    if (cached !== undefined) {
+      return cached ? new Date(cached.getTime()) : null;
+    }
+    
+    const parsed = this.parseSheetDateInternal(str);
+    this.parsedDateCache.set(str, parsed);
+    return parsed;
+  }
+
+  private static parseSheetDateInternal(dateStr: string): Date | null {
     if (!dateStr) return null;
     
     let cleanStr = String(dateStr).trim();
@@ -325,6 +345,13 @@ export class GoogleSheetsService {
   }
 
   static async fetchData(startDate?: string, endDate?: string, selectedUlp?: string): Promise<DashboardData> {
+    const cacheKey = `${startDate || ''}_${endDate || ''}_${selectedUlp || ''}`;
+    const cachedProcessed = this.processedDataCache.get(cacheKey);
+    const nowTime = Date.now();
+    if (cachedProcessed && (nowTime - cachedProcessed.timestamp < 30000)) {
+      return cachedProcessed.data;
+    }
+
     const ALLOWED_REGUS = ["BUKITTINGGI", "PADANGPANJANG", "LUBUKBASUNG", "LUBUKSIKAPING", "SIMPANGEMPAT", "BASO", "KOTOTUO"];
     const isUp3Regu = (r: string) => {
       if (!r) return false;
@@ -1438,7 +1465,7 @@ export class GoogleSheetsService {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
-    return {
+    const result: DashboardData = {
       summary: {
         totalBaca: totalWoCount,
         totalValid: totalWoCctvCount,
@@ -1623,5 +1650,8 @@ export class GoogleSheetsService {
       },
       poIndices: { name: poNameIdx, ulp: poUlpIdx, cctv: poCctvIdx },
     };
+
+    this.processedDataCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    return result;
   }
 }

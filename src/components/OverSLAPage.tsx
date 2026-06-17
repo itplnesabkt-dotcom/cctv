@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { OverSLAData } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { motion } from 'motion/react';
@@ -11,6 +11,18 @@ interface OverSLAPageProps {
 
 export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data, onDetailClick }) => {
   const COLORS = ['#26C6DA', '#FFD700', '#9C27B0', '#4CAF50', '#F44336', '#FF9800'];
+  const [rptPage, setRptPage] = useState(1);
+  const itemsPerRptPage = 15;
+
+  useEffect(() => {
+    setRptPage(1);
+  }, [data]);
+
+  const totalRptPages = Math.ceil(data.woOverSlaRptList.length / itemsPerRptPage) || 1;
+  const paginatedRptList = useMemo(() => {
+    const startIndex = (rptPage - 1) * itemsPerRptPage;
+    return data.woOverSlaRptList.slice(startIndex, startIndex + itemsPerRptPage);
+  }, [data.woOverSlaRptList, rptPage]);
 
   const handleBarClick = (barData: any) => {
     if (onDetailClick && barData && barData.name) {
@@ -64,12 +76,12 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data, onDetailClick })
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {data.woOverSlaRptList.map((row, idx) => (
+                  {paginatedRptList.map((row, idx) => (
                     <motion.tr 
                       key={idx}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      transition={{ delay: idx * 0.03 }}
+                      transition={{ delay: idx * 0.01 }}
                       className="hover:bg-gray-50 transition-colors"
                     >
                       <td className="px-4 py-3 text-[12px] font-black text-brand-primary">{row[0]}</td>
@@ -83,10 +95,29 @@ export const OverSLAPage: React.FC<OverSLAPageProps> = ({ data, onDetailClick })
               </table>
             </div>
             <div className="px-6 py-3 bg-gray-50/50 border-t border-gray-100 flex justify-end items-center text-[10px] text-gray-400 font-bold gap-4">
-               <span className="uppercase tracking-widest">MENAMPILKAN {data.woOverSlaRptList.length} DATA</span>
-               <div className="flex gap-2">
-                 <button className="hover:text-brand-primary transition-colors"><ChevronLeft size={14}/></button>
-                 <button className="hover:text-brand-primary transition-colors"><ChevronRight size={14}/></button>
+               <span className="uppercase tracking-widest">
+                 MENAMPILKAN {Math.min(rptPage * itemsPerRptPage, data.woOverSlaRptList.length)} DARI {data.woOverSlaRptList.length} DATA
+               </span>
+               <div className="flex gap-2 items-center">
+                 <button 
+                   onClick={() => setRptPage(prev => Math.max(1, prev - 1))}
+                   disabled={rptPage === 1}
+                   className="hover:text-brand-primary disabled:opacity-20 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                   title="Previous Page"
+                 >
+                   <ChevronLeft size={14}/>
+                 </button>
+                 <span className="font-mono text-[10px] text-gray-500 font-black px-1">
+                   Halaman {rptPage} / {totalRptPages}
+                 </span>
+                 <button 
+                   onClick={() => setRptPage(prev => Math.min(totalRptPages, prev + 1))}
+                   disabled={rptPage === totalRptPages}
+                   className="hover:text-brand-primary disabled:opacity-20 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                   title="Next Page"
+                 >
+                   <ChevronRight size={14}/>
+                 </button>
                </div>
             </div>
           </div>

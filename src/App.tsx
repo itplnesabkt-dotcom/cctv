@@ -317,7 +317,7 @@ export default function App() {
       <main className="flex-1 p-6 flex flex-col gap-6 overflow-x-hidden">
         <AnimatePresence mode="wait">
           <motion.div
-            key={startDate + endDate + selectedUlp + activeTab}
+            key={activeTab}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}

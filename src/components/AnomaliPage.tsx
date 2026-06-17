@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { AnomaliData } from '../types';
 import { 
   Building2, 
@@ -162,21 +162,53 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
   const [modalSearch, setModalSearch] = useState('');
   
   // Pagination inside modal
+  // Pagination inside modal
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
   // Search and Filters for Pilot/Officer Table
+  const [localSearch, setLocalSearch] = useState('');
   const [pivotSearch, setPivotSearch] = useState('');
   const [pivotUlpSelect, setPivotUlpSelect] = useState('ALL');
 
-  // Helper to count anomalies for a specific ULP
-  const getUlpAnomalyCount = (ulpName: string): number => {
-    if (!data || !data.anomaliList) return 0;
-    const target = ulpName.toUpperCase().trim();
-    return data.anomaliList.filter(row => {
+  // Pivot Table Pagination states
+  const [pivotPage, setPivotPage] = useState(1);
+  const itemsPerPivotPage = 25; // Render 25 rows at a time for lag-free performance
+
+  // Debounce input to keep typing completely fluid
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setPivotSearch(localSearch);
+    }, 200); // 200ms debounce
+    return () => clearTimeout(handler);
+  }, [localSearch]);
+
+  // Pre-calculate ULP counts map for constant-time lookups on renders
+  const ulpCountsMap = useMemo(() => {
+    const countsMap: { [key: string]: number } = {};
+    if (!data || !data.anomaliList) return countsMap;
+    
+    ulpList.forEach(u => {
+      countsMap[u.name.toUpperCase()] = 0;
+    });
+    
+    data.anomaliList.forEach(row => {
       const rowUlp = String(row[3] || "").toUpperCase().trim();
-      return rowUlp === target || rowUlp.includes(target) || target.includes(rowUlp);
-    }).length;
+      if (rowUlp) {
+        ulpList.forEach(u => {
+          const target = u.name.toUpperCase();
+          if (rowUlp === target || rowUlp.includes(target) || target.includes(rowUlp)) {
+            countsMap[target] = (countsMap[target] || 0) + 1;
+          }
+        });
+      }
+    });
+    return countsMap;
+  }, [data]);
+
+  // Helper to count anomalies for a specific ULP in O(1) constant time
+  const getUlpAnomalyCount = (ulpName: string): number => {
+    return ulpCountsMap[ulpName.toUpperCase()] || 0;
   };
 
   // Helper to filter anomaly rows for the selected unit (either UP3 or specific ULP)
@@ -317,6 +349,14 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
     });
   }, [pivotData, pivotSearch, pivotUlpSelect]);
 
+  // Paginated pivot data for Officer Pivot Table to prevent expensive DOM updates
+  const paginatedPivotData = useMemo(() => {
+    const startIdx = (pivotPage - 1) * itemsPerPivotPage;
+    return filteredPivotData.slice(startIdx, startIdx + itemsPerPivotPage);
+  }, [filteredPivotData, pivotPage]);
+
+  const totalPivotPages = Math.ceil(filteredPivotData.length / itemsPerPivotPage) || 1;
+
   // Filter ULP pivot table rows based on ULP selector (or other search if applicable)
   const filteredUlpPivotData = useMemo(() => {
     return ulpPivotData.filter(row => {
@@ -371,11 +411,13 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
   }, [filteredUlpPivotData]);
 
   const handlePivotSearchChange = (val: string) => {
-    setPivotSearch(val);
+    setLocalSearch(val);
+    setPivotPage(1);
   };
 
   const handlePivotUlpChange = (val: string) => {
     setPivotUlpSelect(val);
+    setPivotPage(1);
   };
 
   // Handle open modal for standard Unit card klik
@@ -686,7 +728,7 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
               <Search size={11} className="text-white/70" />
               <input
                 type="text"
-                value={pivotSearch}
+                value={localSearch}
                 onChange={(e) => handlePivotSearchChange(e.target.value)}
                 placeholder="Cari petugas..."
                 className="bg-transparent text-white placeholder-white/50 text-[10px] font-bold outline-none w-full"
@@ -741,8 +783,8 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-300 bg-white">
-                {filteredPivotData.length > 0 ? (
-                  filteredPivotData.map((row, idx) => {
+                {paginatedPivotData.length > 0 ? (
+                  paginatedPivotData.map((row, idx) => {
                     return (
                       <tr key={idx} className="hover:bg-slate-50 transition-colors">
                         <td className="px-3 py-3 border-r border-slate-300 text-left font-black text-slate-900 uppercase">
@@ -788,11 +830,35 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
             </table>
           </div>
 
-          {/* Total info badge footer */}
-          <div className="flex items-center justify-between border-t border-slate-150 pt-1" id="pivot_pagination_bar">
-            <span className="text-[10px] text-slate-500 font-bold uppercase">
-              Total Terdeteksi: <span className="text-blue-600 font-black">{filteredPivotData.length}</span> Petugas • Semua data dimuat dalam 1 halaman / scrollable view
+          {/* Total info badge footer with Pagination controls */}
+          <div className="flex flex-col sm:flex-row items-center justify-between border-t border-slate-150 pt-3 gap-3" id="pivot_pagination_bar">
+            <span className="text-[10px] text-slate-500 font-extrabold uppercase">
+              Menampilkan <span className="text-slate-800 font-black">{filteredPivotData.length > 0 ? (pivotPage - 1) * itemsPerPivotPage + 1 : 0}</span> - <span className="text-slate-800 font-black">{Math.min(pivotPage * itemsPerPivotPage, filteredPivotData.length)}</span> dari <span className="text-blue-600 font-black">{filteredPivotData.length}</span> Petugas
             </span>
+            
+            {totalPivotPages > 1 && (
+              <div className="flex items-center gap-2" id="officer_table_pagination">
+                <button
+                  onClick={() => setPivotPage(prev => Math.max(prev - 1, 1))}
+                  disabled={pivotPage === 1}
+                  className="p-1.5 rounded-lg border border-gray-200 bg-white hover:bg-slate-50 text-gray-600 disabled:opacity-45 disabled:cursor-not-allowed transition-all shadow-sm active:scale-95"
+                  title="Halaman Sebelumnya"
+                >
+                  <ChevronLeft size={14} className="stroke-[2.5]" />
+                </button>
+                <span className="text-[11px] font-black text-slate-600 min-w-[70px] text-center">
+                  Hlm {pivotPage} / {totalPivotPages}
+                </span>
+                <button
+                  onClick={() => setPivotPage(prev => Math.min(prev + 1, totalPivotPages))}
+                  disabled={pivotPage === totalPivotPages}
+                  className="p-1.5 rounded-lg border border-gray-200 bg-white hover:bg-slate-50 text-gray-600 disabled:opacity-45 disabled:cursor-not-allowed transition-all shadow-sm active:scale-95"
+                  title="Halaman Selanjutnya"
+                >
+                  <ChevronRight size={14} className="stroke-[2.5]" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

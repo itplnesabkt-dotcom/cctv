@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { OfficerPerformance } from '../types';
 import { Users, ChevronRight, TrendingUp } from 'lucide-react';
 
@@ -8,6 +8,20 @@ interface PerformanceTableProps {
 }
 
 export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, onDetailClick }) => {
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
+
+  // Reset page to 1 whenever search/filters change the total length of officers
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [data]);
+
+  const totalPages = Math.ceil(data.length / itemsPerPage) || 1;
+  const paginatedData = data.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
   return (
     <div className="dashboard-card flex flex-col">
       <div className="bg-indigo-500 p-4 flex items-center justify-between shrink-0">
@@ -39,7 +53,7 @@ export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, onDeta
             </tr>
           </thead>
           <tbody>
-            {data.map((item, i) => {
+            {paginatedData.map((item, i) => {
               const woVal = parseFloat(item.persenWo) || 0;
               const poVal = parseFloat(item.persenPo) || 0;
               const totalAvg = ((woVal + poVal) / 2).toFixed(2);
@@ -82,11 +96,34 @@ export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, onDeta
         </table>
       </div>
 
-      <div className="bg-gray-50 p-3 flex items-center justify-center border-t border-gray-100">
-        <button className="text-[10px] font-black text-brand-primary tracking-widest uppercase flex items-center gap-2 hover:opacity-70 transition-opacity">
-          LIHAT SEMUA CATATAN KINERJA
-          <ChevronRight size={14} />
-        </button>
+      <div className="bg-gray-50 p-3 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-gray-100 shrink-0">
+        <span className="text-[10px] font-black text-slate-400 tracking-wider uppercase">
+          MENAMPILKAN {Math.min(currentPage * itemsPerPage, data.length)} DARI {data.length} PETUGAS
+        </span>
+        
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1 bg-white border border-slate-200/60 rounded-lg p-0.5 shadow-sm">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="px-2 py-0.5 rounded-md text-[9px] text-brand-primary font-black disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+              title="Page Sebelumnya"
+            >
+              PREV
+            </button>
+            <span className="text-[9px] font-black tracking-tight text-slate-500 px-1 min-w-[50px] text-center">
+              HLM {currentPage} / {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="px-2 py-0.5 rounded-md text-[9px] text-brand-primary font-black disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+              title="Page Selanjutnya"
+            >
+              NEXT
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
