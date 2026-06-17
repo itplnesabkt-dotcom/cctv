@@ -40,22 +40,40 @@ import {
 
 // Custom classification function for Indonesian Safety & Yandal Metrics
 export const classifyAnomaly = (jenis: string, deskripsi: string): number => {
-  const J = String(jenis || "").toLowerCase();
-  const D = String(deskripsi || "").toLowerCase();
-  const text = `${J} ${D}`;
+  const J = String(jenis || "").toLowerCase().trim();
+  const D = String(deskripsi || "").toLowerCase().trim();
 
-  if (text.includes("cctv") || text.includes("kamera")) return 0;
-  if (text.includes("rambu")) return 1;
-  if (text.includes("ps4") || text.includes("ps-4") || text.includes("ps 4")) return 2;
-  if (text.includes("apd") || text.includes("tunjuk sebut") || text.includes("tunjuk-sebut")) return 3;
-  if (text.includes("ccv")) return 4;
-  if (text.includes("alat kerja") || text.includes("material") || text.includes("kelengkapan") || text.includes("peralatan")) return 5;
-  if (text.includes("wp") || text.includes("jsa") || text.includes("working permit") || text.includes("job safety")) return 6;
-  if (text.includes("hsse") || text.includes("yandal sebelum") || (text.includes("lapor") && text.includes("sebelum"))) return 7;
-  if (text.includes("briefing") || text.includes("brief")) return 8;
-  if (text.includes("tersengat") || text.includes("listrik") || text.includes("sengat") || text.includes("setrum")) return 9;
-  if (text.includes("jatuh") || text.includes("ketinggian") || text.includes("terjatuh")) return 10;
-  if (text.includes("selesai") || text.includes("pekerjaan selesai")) return 11;
+  // 1. Try to classify based on 'jenis' first if provided and not generic "lainnya"
+  if (J && J !== "lainnya") {
+    if (J.includes("konfirmasi") || J.includes("ccv")) return 4;
+    if (J.includes("cctv") || J.includes("kamera")) return 0;
+    if (J.includes("rambu")) return 1;
+    if (J.includes("ps4") || J.includes("ps-4") || J.includes("ps 4")) return 2;
+    if (J.includes("apd") || J.includes("tunjuk sebut") || J.includes("tunjuk-sebut")) return 3;
+    if (J.includes("alat kerja") || J.includes("material") || J.includes("kelengkapan") || J.includes("peralatan") || J.includes("materila")) return 5;
+    if (J.includes("wp") || J.includes("jsa") || J.includes("working permit") || J.includes("job safety")) return 6;
+    if (J.includes("hsse") || J.includes("yandal sebelum") || (J.includes("lapor") && J.includes("sebelum"))) return 7;
+    if (J.includes("briefing") || J.includes("brief")) return 8;
+    if (J.includes("tersengat") || J.includes("listrik") || J.includes("sengat") || J.includes("setrum")) return 9;
+    if (J.includes("jatuh") || J.includes("ketinggian") || J.includes("terjatuh")) return 10;
+    if (J.includes("selesai") || J.includes("pekerjaan selesai")) return 11;
+  }
+
+  // 2. Fall back to classifying based on 'deskripsi'
+  if (D) {
+    if (D.includes("konfirmasi") || D.includes("ccv")) return 4;
+    if (D.includes("cctv") || D.includes("kamera")) return 0;
+    if (D.includes("rambu")) return 1;
+    if (D.includes("ps4") || D.includes("ps-4") || D.includes("ps 4")) return 2;
+    if (D.includes("apd") || D.includes("tunjuk sebut") || D.includes("tunjuk-sebut")) return 3;
+    if (D.includes("alat kerja") || D.includes("material") || D.includes("kelengkapan") || D.includes("peralatan") || D.includes("materila")) return 5;
+    if (D.includes("wp") || D.includes("jsa") || D.includes("working permit") || D.includes("job safety")) return 6;
+    if (D.includes("hsse") || D.includes("yandal sebelum") || (D.includes("lapor") && D.includes("sebelum"))) return 7;
+    if (D.includes("briefing") || D.includes("brief")) return 8;
+    if (D.includes("tersengat") || D.includes("listrik") || D.includes("sengat") || D.includes("setrum")) return 9;
+    if (D.includes("jatuh") || D.includes("ketinggian") || D.includes("terjatuh")) return 10;
+    if (D.includes("selesai") || D.includes("pekerjaan selesai")) return 11;
+  }
 
   return -1;
 };
@@ -258,8 +276,6 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
         const catIdx = classifyAnomaly(part, desc);
         if (catIdx !== -1) {
           groups[key].counts[catIdx]++;
-        } else {
-          groups[key].counts[0]++;
         }
       });
 
@@ -268,8 +284,6 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
         const catIdx = classifyAnomaly("", desc);
         if (catIdx !== -1) {
           groups[key].counts[catIdx]++;
-        } else {
-          groups[key].counts[0]++;
         }
       }
 
@@ -315,8 +329,6 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
         const catIdx = classifyAnomaly(part, desc);
         if (catIdx !== -1) {
           groups[rawUlp].counts[catIdx]++;
-        } else {
-          groups[rawUlp].counts[0]++;
         }
       });
 
@@ -324,8 +336,6 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
         const catIdx = classifyAnomaly("", desc);
         if (catIdx !== -1) {
           groups[rawUlp].counts[catIdx]++;
-        } else {
-          groups[rawUlp].counts[0]++;
         }
       }
 

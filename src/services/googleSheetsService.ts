@@ -36,43 +36,64 @@ export class GoogleSheetsService {
   private static parsedDateCache = new Map<string, Date | null>();
 
   private static async fetchSheetDataRaw(sheetName: string): Promise<any[][]> {
-    const endpoints = [
-      `https://docs.google.com/spreadsheets/d/${this.SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`,
-      `https://docs.google.com/spreadsheets/d/${this.SPREADSHEET_ID}/export?format=csv&sheet=${encodeURIComponent(sheetName)}`,
-      `https://docs.google.com/spreadsheets/d/${this.SPREADSHEET_ID}/pub?output=csv&sheet=${encodeURIComponent(sheetName)}`
+    // Only "WO" can safely fallback to default /export since it's the first sheet.
+    // Other sheets must ONLY use /gviz/tq since /export would ignore the sheet parameter 
+    // and incorrectly return the first sheet ("WO") instead, corrupting our database.
+    const isFirstSheet = sheetName.toUpperCase() === "WO";
+    
+    const urls: string[] = [
+      `https://docs.google.com/spreadsheets/d/${this.SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`
     ];
+    
+    if (isFirstSheet) {
+      urls.push(`https://docs.google.com/spreadsheets/d/${this.SPREADSHEET_ID}/export?format=csv`);
+    }
 
-    for (const url of endpoints) {
-      try {
-        const response = await fetch(url, { cache: 'no-store' });
+    const maxRetries = 3;
+    for (const url of urls) {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const response = await fetch(url, { cache: 'no-store' });
 
-        if (!response.ok) {
-          continue;
-        }
-        
-        const csvText = await response.text();
-        
-        // If we get HTML, it means we're likely being redirected to a login page or error page
-        if (!csvText || csvText.trim().startsWith('<!DOCTYPE html>') || csvText.includes('<html') || csvText.includes('google-signin')) {
-          continue;
-        }
+          if (!response.ok) {
+            if (attempt < maxRetries && url.includes('gviz')) {
+              await new Promise(r => setTimeout(r, 150));
+              continue;
+            }
+            continue;
+          }
+          
+          const csvText = await response.text();
+          
+          // If we get HTML, it means we're likely being redirected to a login page or error page
+          if (!csvText || csvText.trim().startsWith('<!DOCTYPE html>') || csvText.includes('<html') || csvText.includes('google-signin')) {
+            if (attempt < maxRetries && url.includes('gviz')) {
+              await new Promise(r => setTimeout(r, 150));
+              continue;
+            }
+            continue;
+          }
 
-        return new Promise((resolve, reject) => {
-          Papa.parse(csvText, {
-            header: false,
-            skipEmptyLines: true,
-            complete: (results) => {
-              if (results.data && results.data.length > 0) {
-                resolve(results.data as any[][]);
-              } else {
-                resolve([]);
-              }
-            },
-            error: (error: any) => reject(error),
+          return new Promise((resolve, reject) => {
+            Papa.parse(csvText, {
+              header: false,
+              skipEmptyLines: true,
+              complete: (results) => {
+                if (results.data && results.data.length > 0) {
+                  resolve(results.data as any[][]);
+                } else {
+                  resolve([]);
+                }
+              },
+              error: (error: any) => reject(error),
+            });
           });
-        });
-      } catch (error) {
-        // Silent error
+        } catch (error) {
+          if (attempt < maxRetries && url.includes('gviz')) {
+            await new Promise(r => setTimeout(r, 150));
+            continue;
+          }
+        }
       }
     }
 
@@ -1173,6 +1194,7 @@ export class GoogleSheetsService {
       let dateCol = 4;
       let anomaliCol = 8;
       let descCol = 9;
+      let petugasCol = 3;
 
       if (sheetAnomaliHeaderIdx !== -1) {
         const headers = anomaliSheetRows[sheetAnomaliHeaderIdx].map((h: any) => String(h || "").trim().toLowerCase());
@@ -1198,6 +1220,9 @@ export class GoogleSheetsService {
           if (h.includes("keterangan") || h.includes("deskripsi") || h.includes("desc") || h.includes("detail")) {
             descCol = idx;
           }
+          if (h === "petugas" || h === "user regu" || h === "regu" || h.includes("petugas") || h.includes("regu") || h.includes("officer")) {
+            petugasCol = idx;
+          }
         });
       }
 
@@ -1209,7 +1234,6 @@ export class GoogleSheetsService {
         
         // Match value 'ANOMALI' in the designated 'Anomali' column (Column I)
         const cellVal = String(row[anomaliCol] || "").trim().toLowerCase();
-        if (cellVal !== "anomali") return;
 
         const id = String(row[idCol] || "").trim();
         const tglRaw = String(row[dateCol] || "").trim();
@@ -1229,6 +1253,10 @@ export class GoogleSheetsService {
         if (solvedInfo) {
           name = solvedInfo.name || "TIDAK TERIDENTIFIKASI";
           ulpVal = solvedInfo.ulp || "";
+        }
+
+        if (name === "TIDAK TERIDENTIFIKASI" && petugasCol !== -1 && petugasCol < row.length) {
+          name = String(row[petugasCol] || "").trim();
         }
 
         if (!ulpVal && ulpCol !== -1 && ulpCol < row.length) {
@@ -1266,9 +1294,43 @@ export class GoogleSheetsService {
         ];
 
         if (sheetAnomaliHeaderIdx !== -1) {
-          const actualRowHeaders = anomaliSheetRows[sheetAnomaliHeaderIdx];
+          const actualRowHeaders = anomaliSheetRows[sheetAnomaliHeaderIdx].map((h: any) => String(h || "").trim().toLowerCase());
           safetyChecklists.forEach(sc => {
-            const foundIdx = actualRowHeaders.findIndex(h => String(h || "").trim().toLowerCase() === sc.name.toLowerCase());
+            const tempTargetName = sc.name.toLowerCase();
+            let foundIdx = -1;
+
+            // Try exact match first
+            foundIdx = actualRowHeaders.indexOf(tempTargetName);
+
+            // Try relaxed match if exact match not found
+            if (foundIdx === -1) {
+              if (sc.name === "CCTV") {
+                foundIdx = actualRowHeaders.findIndex(h => h.includes("cctv") && !h.includes("konfirmasi"));
+              } else if (sc.name === "Konfirmasi CCV") {
+                foundIdx = actualRowHeaders.findIndex(h => h.includes("ccv") || (h.includes("konfirmasi") && h.includes("cctv")));
+              } else if (sc.name === "Rambu Kerja") {
+                foundIdx = actualRowHeaders.findIndex(h => h.includes("rambu"));
+              } else if (sc.name === "PS4") {
+                foundIdx = actualRowHeaders.findIndex(h => h.includes("ps4") || h.includes("ps-4") || h.includes("ps 4"));
+              } else if (sc.name === "APD Tunjuk Sebut") {
+                foundIdx = actualRowHeaders.findIndex(h => h.includes("apd") || h.includes("tunjuk"));
+              } else if (sc.name === "Kelengkapan Alat Kerja & Material") {
+                foundIdx = actualRowHeaders.findIndex(h => h.includes("alat kerja") || h.includes("material") || h.includes("kelengkapan") || h.includes("peralatan") || h.includes("materila") || h.includes("alat kerja & material"));
+              } else if (sc.name === "WP & JSA") {
+                foundIdx = actualRowHeaders.findIndex(h => h.includes("wp") || h.includes("jsa") || h.includes("working permit") || h.includes("job safety") || h.includes("wp & jsa") || h.includes("wp&jsa"));
+              } else if (sc.name === "Laporan Yandal ke HSSE Sebelum Bekerja") {
+                foundIdx = actualRowHeaders.findIndex(h => h.includes("hsse") || h.includes("yandal sebelum") || (h.includes("yandal") && h.includes("sebelum")) || (h.includes("lapor") && h.includes("sebelum") && h.includes("hsse")) || h.includes("hsse sebelum"));
+              } else if (sc.name === "Safety Briefing") {
+                foundIdx = actualRowHeaders.findIndex(h => h.includes("briefing") || h.includes("brief"));
+              } else if (sc.name === "Antisipasi tersengat Listrik") {
+                foundIdx = actualRowHeaders.findIndex(h => h.includes("tersengat") || h.includes("sengat") || h.includes("listrik") || (h.includes("antisipasi") && h.includes("listrik")));
+              } else if (sc.name === "Antisipasi Terjatuh dari Ketinggian") {
+                foundIdx = actualRowHeaders.findIndex(h => h.includes("jatuh") || h.includes("ketinggian") || h.includes("terjatuh"));
+              } else if (sc.name === "Laporan Pekerjaan Selesai") {
+                foundIdx = actualRowHeaders.findIndex(h => h.includes("selesai") || h.includes("pekerjaan selesai"));
+              }
+            }
+
             if (foundIdx !== -1) {
               sc.idx = foundIdx;
             }
@@ -1278,7 +1340,8 @@ export class GoogleSheetsService {
         safetyChecklists.forEach(sc => {
           if (sc.idx !== -1 && sc.idx < row.length) {
             const cellValRaw = String(row[sc.idx] || "").trim().toLowerCase();
-            if (cellValRaw === "tidak sesuai") {
+            const isAnomaly = cellValRaw === "tidak sesuai" || cellValRaw.includes("tidak sesuai");
+            if (isAnomaly) {
               const ketAnomali = descCol !== -1 && descCol < row.length ? String(row[descCol] || "").trim() : "";
               violations.push({
                 jenis: sc.name,
@@ -1288,13 +1351,19 @@ export class GoogleSheetsService {
           }
         });
 
-        // Fallback to "Lainnya" if no "Tidak Sesuai" columns were found but the row is indeed an "ANOMALI"
-        if (violations.length === 0) {
+        const isAnomaliRow = cellVal === "anomali";
+
+        // Fallback to "Lainnya" if no specific safety violations were found but the row is indeed an "ANOMALI"
+        if (violations.length === 0 && isAnomaliRow) {
           const ketAnomali = descCol !== -1 && descCol < row.length ? String(row[descCol] || "").trim() : "";
           violations.push({
             jenis: "Lainnya",
             desc: ketAnomali || "Laporan berstatus ANOMALI"
           });
+        }
+
+        if (violations.length === 0 && !isAnomaliRow) {
+          return; // Skip this row because it's completely normal and has no compliance violations
         }
 
         // Helper to check if type matches safety checklist items
