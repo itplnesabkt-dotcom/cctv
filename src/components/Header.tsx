@@ -2,8 +2,8 @@ import React from 'react';
 import { LayoutGrid, FileText, Scissors, Zap, Wallet, BarChart2, ShieldCheck, Settings, AlertTriangle } from 'lucide-react';
 
 interface HeaderProps {
-  activeTab: 'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING';
-  onTabChange: (tab: 'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING') => void;
+  activeTab: 'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING' | 'ADMIN';
+  onTabChange: (tab: 'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING' | 'ADMIN') => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange }) => {
@@ -48,6 +48,12 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange }) => {
           label="RATING" 
           active={activeTab === 'RATING'} 
           onClick={() => onTabChange('RATING')}
+        />
+        <NavItem 
+          icon={<ShieldCheck size={16} />} 
+          label="ADMIN" 
+          active={activeTab === 'ADMIN'} 
+          onClick={() => onTabChange('ADMIN')}
         />
       </nav>
 

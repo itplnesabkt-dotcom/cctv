@@ -11,7 +11,7 @@ interface SubHeaderProps {
   endDate: string;
   onStartDateChange: (date: string) => void;
   onEndDateChange: (date: string) => void;
-  activeTab: 'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING';
+  activeTab: 'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING' | 'ADMIN';
 }
 
 export const SubHeader: React.FC<SubHeaderProps> = ({ 
@@ -38,6 +38,8 @@ export const SubHeader: React.FC<SubHeaderProps> = ({
               <>MONITORING <span className="text-brand-secondary">ANOMALI DATA YANDAL</span></>
             ) : activeTab === 'OVER_SLA' ? (
               <>MONITORING <span className="text-brand-secondary">OVER SLA RPT DAN RCT</span></>
+            ) : activeTab === 'ADMIN' ? (
+              <>TINDAK LANJUT <span className="text-brand-secondary">ADMIN</span></>
             ) : (
               <>MONITORING <span className="text-brand-secondary">RATING</span></>
             )}

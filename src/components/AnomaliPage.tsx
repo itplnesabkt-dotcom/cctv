@@ -14,7 +14,9 @@ import {
   User,
   ArrowUpDown,
   BarChart3,
-  PieChart as PieIcon
+  PieChart as PieIcon,
+  Camera,
+  Eye
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
@@ -192,6 +194,95 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
   // Pivot Table Pagination states
   const [pivotPage, setPivotPage] = useState(1);
   const itemsPerPivotPage = 25; // Render 25 rows at a time for lag-free performance
+
+  // Tindak Lanjut Table Pagination & Modal states
+  const [tindakPage, setTindakPage] = useState(1);
+  const itemsPerTindakPage = 15;
+  const [evidenceModalRow, setEvidenceModalRow] = useState<any[] | null>(null);
+  const [evidencePhotoIdx, setEvidencePhotoIdx] = useState<1 | 2>(1);
+
+  // Load Eviden mappings from localStorage
+  const [uploadedEvidens, setUploadedEvidens] = useState<{ [noTugas: string]: any }>({});
+
+  useEffect(() => {
+    const loadEvidens = () => {
+      const saved = localStorage.getItem('anomali_evidens');
+      if (saved) {
+        try {
+          setUploadedEvidens(JSON.parse(saved));
+        } catch (e) {
+          console.error("Gagal membaca anomali_evidens di AnomaliPage", e);
+        }
+      } else {
+        setUploadedEvidens({});
+      }
+    };
+
+    loadEvidens();
+
+    // Listen for up-to-date changes from AdminPage
+    window.addEventListener('anomali_evidens_updated', loadEvidens);
+    return () => {
+      window.removeEventListener('anomali_evidens_updated', loadEvidens);
+    };
+  }, []);
+
+  // Automatically reset Tindak Lanjut pagination to page 1 on search or filter change
+  useEffect(() => {
+    setTindakPage(1);
+  }, [pivotSearch, pivotUlpSelect]);
+
+  // Helper to determine the photo url based on anomaly description/types
+  const getEvidencePhotoUrl = (row: any[], photoIdx: number = 1): string => {
+    const noTugas = String(row[0] || "");
+    const customEviden = uploadedEvidens[noTugas];
+    if (customEviden) {
+      if (photoIdx === 1 && customEviden.fotoEviden1) {
+        return customEviden.fotoEviden1;
+      }
+      if (photoIdx === 2 && customEviden.fotoEviden2) {
+        return customEviden.fotoEviden2;
+      }
+    }
+
+    const jenis = String(row[4] || "").toLowerCase();
+    if (photoIdx === 1) {
+      if (jenis.includes("cctv") || jenis.includes("kamera")) {
+        return "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?auto=format&fit=crop&w=800&q=80";
+      }
+      if (jenis.includes("rambu")) {
+        return "https://images.unsplash.com/photo-1508962914676-134849a727f0?auto=format&fit=crop&w=800&q=80";
+      }
+      if (jenis.includes("apd") || jenis.includes("tunjuk sebut") || jenis.includes("helmet")) {
+        return "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=800&q=80";
+      }
+      if (jenis.includes("listrik") || jenis.includes("sengat")) {
+        return "https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?auto=format&fit=crop&w=800&q=80";
+      }
+      if (jenis.includes("ketinggian") || jenis.includes("jatuh")) {
+        return "https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?auto=format&fit=crop&w=800&q=80";
+      }
+      return "https://images.unsplash.com/photo-1581092921461-eab62e97a780?auto=format&fit=crop&w=800&q=80";
+    } else {
+      // Second distinct high-quality photo variant
+      if (jenis.includes("cctv") || jenis.includes("kamera")) {
+        return "https://images.unsplash.com/photo-1557597774-9d273605dfa9?auto=format&fit=crop&w=800&q=80";
+      }
+      if (jenis.includes("rambu")) {
+        return "https://images.unsplash.com/photo-1510981105307-eac9df3afdf9?auto=format&fit=crop&w=800&q=80";
+      }
+      if (jenis.includes("apd") || jenis.includes("tunjuk sebut") || jenis.includes("helmet")) {
+        return "https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=800&q=80";
+      }
+      if (jenis.includes("listrik") || jenis.includes("sengat")) {
+        return "https://images.unsplash.com/photo-1455165814004-1126a7199f9b?auto=format&fit=crop&w=800&q=80";
+      }
+      if (jenis.includes("ketinggian") || jenis.includes("jatuh")) {
+        return "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?auto=format&fit=crop&w=800&q=80";
+      }
+      return "https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=800&q=80";
+    }
+  };
 
   // Debounce input to keep typing completely fluid
   useEffect(() => {
@@ -379,6 +470,37 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
       return matchesSearch && matchesUlp;
     });
   }, [ulpPivotData, pivotSearch, pivotUlpSelect]);
+
+  // Filtered and Searchable Data for the TINDAK LANJUT ANOMALI Table
+  const tindakLanjutData = useMemo(() => {
+    if (!data || !data.anomaliList) return [];
+    return data.anomaliList.filter(row => {
+      const id = String(row[0] || "").toLowerCase();
+      const petugas = String(row[2] || "").toLowerCase();
+      const ulp = String(row[3] || "").toLowerCase();
+      const jenis = String(row[4] || "").toLowerCase();
+      const search = pivotSearch.toLowerCase().trim();
+
+      const matchesSearch = !search ||
+        id.includes(search) ||
+        petugas.includes(search) ||
+        ulp.includes(search) ||
+        jenis.includes(search);
+
+      const matchesUlp = pivotUlpSelect === "ALL" ||
+        ulp.toUpperCase() === pivotUlpSelect.toUpperCase() ||
+        ulp.includes(pivotUlpSelect.toLowerCase());
+
+      return matchesSearch && matchesUlp;
+    });
+  }, [data, pivotSearch, pivotUlpSelect]);
+
+  const totalTindakPages = Math.ceil(tindakLanjutData.length / itemsPerTindakPage) || 1;
+
+  const paginatedTindakLanjutData = useMemo(() => {
+    const startIdx = (tindakPage - 1) * itemsPerTindakPage;
+    return tindakLanjutData.slice(startIdx, startIdx + itemsPerTindakPage);
+  }, [tindakLanjutData, tindakPage]);
 
   // Chart data for KETERANGAN ANOMALI (Rose / Radar Chart style representation)
   const keteranganAnomaliChartData = useMemo(() => {
@@ -985,163 +1107,534 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
         </div>
       </div>
 
-      {/* Visual Analytics Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-2" id="ulp_charts_section">
+      {/* 3-Column Visual Analytics & Anomaly Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6" id="three_features_row">
         
-        {/* Left Chart: KETERANGAN ANOMALI (Rose / Radar style chart) */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col h-[485px]">
-          <div className="mb-4">
-            <h3 className="text-xs font-black tracking-widest text-slate-900 uppercase flex items-center gap-1.5">
-              <PieIcon size={14} className="text-cyan-500 font-bold" />
-              KETERANGAN ANOMALI
-            </h3>
-            <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
-              Distribusi frekuensi temuan berdasarkan 12 kategori integritas (Rose/Radar)
-            </p>
+        {/* Left Column: Stacked Charts (Anomali Keterangan & Anomali Per ULP) */}
+        <div className="lg:col-span-5 flex flex-col gap-6" id="left_stacked_charts">
+          
+          {/* Top Chart: KETERANGAN ANOMALI (Rose / Radar style chart) */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col h-[750px] w-full" id="keterangan_anomali_chart_card">
+            <div className="mb-4">
+              <h3 className="text-xs font-black tracking-widest text-[#1b3d5d] uppercase flex items-center gap-1.5">
+                <PieIcon size={14} className="text-cyan-500 font-bold" />
+                KETERANGAN ANOMALI
+              </h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
+                Distribusi frekuensi temuan berdasarkan 12 kategori integritas (Rose/Radar)
+              </p>
+            </div>
+            <div className="flex-1 w-full min-h-0 flex flex-col justify-between">
+              <div className="h-[520px] shrink-0 relative w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={keteranganAnomaliChartData.map(item => ({ ...item, value: 1 }))}
+                      cx="55%"
+                      cy="50%"
+                      innerRadius={25}
+                      outerRadius={225}
+                      dataKey="value"
+                      shape={(props: any) => {
+                        const { cx, cy, innerRadius, startAngle, endAngle, fill, payload } = props;
+                        
+                        // Dynamic outerRadius logic
+                        const counts = keteranganAnomaliChartData.map(d => d.count);
+                        const maxVal = Math.max(...counts, 1);
+                        const minOuterRadius = 60;
+                        const maxOuterRadius = 225;
+                        
+                        const currentOuterRadius = payload.count === 0 
+                          ? minOuterRadius 
+                          : minOuterRadius + (payload.count / maxVal) * (maxOuterRadius - minOuterRadius);
+
+                        const middleAngle = (startAngle + endAngle) / 2;
+                        const RADIAN = Math.PI / 180;
+                        const labelRadius = innerRadius + (currentOuterRadius - innerRadius) * 0.55;
+                        const labelX = cx + labelRadius * Math.cos(-middleAngle * RADIAN);
+                        const labelY = cy + labelRadius * Math.sin(-middleAngle * RADIAN);
+
+                        const sumVal = counts.reduce((a, b) => a + b, 0);
+                        const percentage = sumVal > 0 ? Math.round((payload.count / sumVal) * 100) : 0;
+
+                        return (
+                          <g>
+                            <Sector
+                              cx={cx}
+                              cy={cy}
+                              innerRadius={innerRadius}
+                              outerRadius={currentOuterRadius}
+                              startAngle={startAngle}
+                              endAngle={endAngle}
+                              fill={fill}
+                              opacity={0.85}
+                              cursor="pointer"
+                              stroke="#ffffff"
+                              strokeWidth={1.5}
+                              className="transition-all duration-300 hover:opacity-100"
+                            />
+                            {percentage > 0 && currentOuterRadius > 70 && (
+                              <text
+                                x={labelX}
+                                y={labelY}
+                                fill="#ffffff"
+                                textAnchor="middle"
+                                dominantBaseline="central"
+                                className="text-[11px] font-extrabold pointer-events-none drop-shadow-md select-none"
+                              >
+                                {`${percentage}%`}
+                              </text>
+                            )}
+                          </g>
+                        );
+                      }}
+                    >
+                      {keteranganAnomaliChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={roseColorsArray[index % roseColorsArray.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip content={<CustomRoseTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              
+              {/* Custom Legend Underneath the Rose Chart */}
+              <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5 mt-2 max-h-[130px] overflow-y-auto custom-scrollbar px-1 py-1.5 bg-slate-50 rounded-xl border border-slate-100">
+                {keteranganAnomaliChartData.map((item, index) => {
+                  const color = roseColorsArray[index % roseColorsArray.length];
+                  return (
+                    <div 
+                      key={index} 
+                      className="flex items-center gap-1.5 bg-white border border-slate-100 px-2 py-0.5 rounded-lg text-[8px] font-black text-slate-700 uppercase tracking-tight shadow-sm hover:scale-[1.03] transition-transform cursor-pointer"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                      <span>{item.shortName}</span>
+                      <span className="text-[7.5px] font-bold text-slate-400 bg-slate-100 px-1 rounded tabular-nums">{item.count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-          <div className="flex-1 w-full min-h-0 flex flex-col justify-between">
-            <div className="flex-1 min-h-0 relative">
+
+          {/* Bottom Chart: ANOMALI PER ULP (Bar/Batang chart) */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col h-[485px] w-full" id="anomali_per_ulp_chart_card">
+            <div className="mb-4">
+              <h3 className="text-xs font-black tracking-widest text-[#1b3d5d] uppercase flex items-center gap-1.5">
+                <BarChart3 size={14} className="text-cyan-500 font-bold" />
+                ANOMALI PER ULP
+              </h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
+                Perbandingan total temuan kasus kesalahan antar Unit Layanan Pelanggan (Bar)
+              </p>
+            </div>
+            <div className="flex-1 w-full min-h-0">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={keteranganAnomaliChartData.map(item => ({ ...item, value: 1 }))}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={15}
-                    outerRadius={140}
-                    dataKey="value"
-                    shape={(props: any) => {
-                      const { cx, cy, innerRadius, startAngle, endAngle, fill, payload } = props;
-                      
-                      // Dynamic outerRadius logic
-                      const counts = keteranganAnomaliChartData.map(d => d.count);
-                      const maxVal = Math.max(...counts, 1);
-                      const minOuterRadius = 30;
-                      const maxOuterRadius = 135;
-                      
-                      const currentOuterRadius = payload.count === 0 
-                        ? minOuterRadius 
-                        : minOuterRadius + (payload.count / maxVal) * (maxOuterRadius - minOuterRadius);
-
-                      const middleAngle = (startAngle + endAngle) / 2;
-                      const RADIAN = Math.PI / 180;
-                      const labelRadius = innerRadius + (currentOuterRadius - innerRadius) * 0.55;
-                      const labelX = cx + labelRadius * Math.cos(-middleAngle * RADIAN);
-                      const labelY = cy + labelRadius * Math.sin(-middleAngle * RADIAN);
-
-                      const sumVal = counts.reduce((a, b) => a + b, 0);
-                      const percentage = sumVal > 0 ? Math.round((payload.count / sumVal) * 100) : 0;
-
+                <BarChart 
+                  data={ulpChartData} 
+                  margin={{ top: 20, right: 10, left: -20, bottom: 20 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="ulpName" 
+                    tick={{ fill: '#475569', fontSize: 8, fontWeight: 800 }} 
+                    tickLine={false} 
+                    axisLine={false}
+                    interval={0}
+                  />
+                  <YAxis 
+                    tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 500 }} 
+                    tickLine={false} 
+                    axisLine={false} 
+                  />
+                  <RechartsTooltip cursor={{ fill: 'rgba(6, 182, 212, 0.04)' }} content={<CustomBarTooltip />} />
+                  <Bar dataKey="total" radius={[8, 8, 0, 0]} fill="#0f172a" maxBarSize={45}>
+                    {ulpChartData.map((entry, index) => {
                       return (
-                        <g>
-                          <Sector
-                            cx={cx}
-                            cy={cy}
-                            innerRadius={innerRadius}
-                            outerRadius={currentOuterRadius}
-                            startAngle={startAngle}
-                            endAngle={endAngle}
-                            fill={fill}
-                            opacity={0.85}
-                            cursor="pointer"
-                            stroke="#ffffff"
-                            strokeWidth={1.5}
-                            className="transition-all duration-300 hover:opacity-100"
-                          />
-                          {percentage > 0 && currentOuterRadius > 50 && (
-                            <text
-                              x={labelX}
-                              y={labelY}
-                              fill="#ffffff"
-                              textAnchor="middle"
-                              dominantBaseline="central"
-                              className="text-[9px] font-extrabold pointer-events-none drop-shadow-md select-none"
-                            >
-                              {`${percentage}%`}
-                            </text>
-                          )}
-                        </g>
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={index === 0 ? '#06b6d4' : index % 2 === 0 ? '#1b3d5d' : '#3b82f6'} 
+                        />
                       );
-                    }}
-                  >
-                    {keteranganAnomaliChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={roseColorsArray[index % roseColorsArray.length]} />
-                    ))}
-                  </Pie>
-                  <RechartsTooltip content={<CustomRoseTooltip />} />
-                </PieChart>
+                    })}
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             </div>
-            
-            {/* Custom Legend Underneath the Rose Chart */}
-            <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5 mt-2 max-h-[110px] overflow-y-auto custom-scrollbar px-1 py-1.5 bg-slate-50 rounded-xl border border-slate-100">
-              {keteranganAnomaliChartData.map((item, index) => {
-                const color = roseColorsArray[index % roseColorsArray.length];
-                return (
-                  <div 
-                    key={index} 
-                    className="flex items-center gap-1.5 bg-white border border-slate-100 px-2 py-0.5 rounded-lg text-[8px] font-black text-slate-700 uppercase tracking-tight shadow-sm hover:scale-[1.03] transition-transform cursor-pointer"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                    <span>{item.shortName}</span>
-                    <span className="text-[7.5px] font-bold text-slate-400 bg-slate-100 px-1 rounded tabular-nums">{item.count}</span>
-                  </div>
-                );
-              })}
-            </div>
           </div>
+
         </div>
 
-        {/* Right Chart: ANOMALI PER ULP (Bar/Batang chart) */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col h-[485px]">
-          <div className="mb-4">
-            <h3 className="text-xs font-black tracking-widest text-slate-900 uppercase flex items-center gap-1.5">
-              <BarChart3 size={14} className="text-cyan-500 font-bold" />
-              ANOMALI PER ULP
-            </h3>
-            <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
-              Perbandingan total temuan kasus kesalahan antar Unit Layanan Pelanggan (Bar)
-            </p>
+        {/* Right Column: Tindak Lanjut Anomali Table */}
+        <div className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col justify-between h-auto lg:h-[1259px] w-full" id="tindak_lanjut_anomali_section">
+          <div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+              <div>
+                <h3 className="text-xs font-black tracking-widest text-[#1b3d5d] uppercase flex items-center gap-1">
+                  <Camera size={14} className="text-[#06b6d4]" />
+                  TINDAK LANJUT ANOMALI
+                </h3>
+                <p className="text-[8.5px] text-slate-400 font-bold uppercase mt-0.5">
+                  Bukti fisik / foto temuan kasus
+                </p>
+              </div>
+              
+              {/* Quick Counter */}
+              <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-lg border border-slate-150 self-start">
+                <span className="text-[7.5px] font-extrabold text-[#1b3d5d] uppercase tracking-widest">Temuan:</span>
+                <span className="text-[10px] font-black text-rose-500 tabular-nums">{tindakLanjutData.length}</span>
+              </div>
+            </div>
+
+            {/* Table representation */}
+            <div className="overflow-x-auto min-w-full custom-scrollbar">
+              <table className="min-w-full divide-y divide-slate-100">
+                <thead>
+                  <tr className="bg-slate-50 rounded-lg">
+                    <th scope="col" className="px-2 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest w-6">No</th>
+                    <th scope="col" className="px-2 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">ULP</th>
+                    <th scope="col" className="px-2 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">Petugas</th>
+                    <th scope="col" className="px-2 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">No Tugas</th>
+                    <th scope="col" className="px-2 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">Jenis Anomali</th>
+                    <th scope="col" className="px-2 py-2 text-center text-[8px] font-black text-slate-400 uppercase tracking-widest">Foto Eviden 1</th>
+                    <th scope="col" className="px-2 py-2 text-center text-[8px] font-black text-slate-400 uppercase tracking-widest">Foto Eviden 2</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {paginatedTindakLanjutData.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-2 py-12 text-center text-[9px] text-slate-400 font-extrabold uppercase tracking-widest">
+                        Tidak ada temuan anomali
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedTindakLanjutData.map((row, idx) => {
+                      const runningNo = (tindakPage - 1) * itemsPerTindakPage + idx + 1;
+                      const rowId = row[0] || "-";
+                      const rowTgl = row[1] || "-";
+                      const rowPetugas = row[2] || "-";
+                      const rowUlp = row[3] || "UNKNOWN";
+                      const rowJenis = row[4] || "Lainnya";
+                      const rowDesc = row[5] || "-";
+                      
+                      // Split individual safety violations
+                      const violationsList = rowJenis.split(",").map(v => v.trim()).filter(Boolean);
+
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                          {/* No */}
+                          <td className="px-2 py-2 text-left text-[9px] font-extrabold text-slate-400 tabular-nums">{runningNo}</td>
+                          
+                          {/* ULP */}
+                          <td className="px-2 py-2 text-left text-[8px] font-black text-cyan-600 uppercase tracking-tight">
+                            {rowUlp}
+                          </td>
+
+                          {/* Petugas */}
+                          <td className="px-2 py-2 text-left max-w-[85px] text-[8px] font-bold text-slate-600 uppercase truncate" title={rowPetugas}>
+                            {rowPetugas}
+                          </td>
+
+                          {/* No Tugas */}
+                          <td className="px-2 py-2 text-left text-[9px] font-black text-slate-700 font-mono">
+                            <span className="bg-slate-50 border border-slate-150 rounded px-1 py-0.5">{rowId}</span>
+                          </td>
+                          
+                          {/* Jenis Anomali badging */}
+                          <td className="px-2 py-2 text-left max-w-[125px]">
+                            <div className="flex flex-wrap gap-0.5 max-h-[30px] overflow-y-auto custom-scrollbar">
+                              {violationsList.map((v, vIdx) => {
+                                let badgeStyle = "bg-rose-50 text-rose-600 border-rose-100";
+                                const vLower = v.toLowerCase();
+                                if (vLower.includes("cctv") || vLower.includes("kamera")) {
+                                  badgeStyle = "bg-red-50 text-red-600 border-red-100";
+                                } else if (vLower.includes("rambu")) {
+                                  badgeStyle = "bg-amber-50 text-amber-600 border-amber-100";
+                                } else if (vLower.includes("ps4") || vLower.includes("ps-4")) {
+                                  badgeStyle = "bg-orange-50 text-orange-600 border-orange-100";
+                                } else if (vLower.includes("apd")) {
+                                  badgeStyle = "bg-yellow-50 text-yellow-700 border-yellow-200";
+                                } else if (vLower.includes("konfirmasi")) {
+                                  badgeStyle = "bg-purple-50 text-purple-600 border-purple-100";
+                                } else if (vLower.includes("alat kerja") || vLower.includes("material")) {
+                                  badgeStyle = "bg-pink-50 text-pink-600 border-pink-100";
+                                } else if (vLower.includes("wp") || vLower.includes("jsa")) {
+                                  badgeStyle = "bg-indigo-50 text-indigo-600 border-indigo-100";
+                                } else if (vLower.includes("hsse") || vLower.includes("lapor")) {
+                                  badgeStyle = "bg-blue-50 text-blue-600 border-blue-100";
+                                } else if (vLower.includes("briefing")) {
+                                  badgeStyle = "bg-teal-50 text-teal-600 border-teal-100";
+                                }
+
+                                return (
+                                  <span key={vIdx} className={`px-1 py-0.5 text-[7px] font-black uppercase tracking-tight rounded border ${badgeStyle}`}>
+                                    {v}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                            {rowDesc && rowDesc !== "-" && (
+                              <p className="text-[7.5px] text-slate-400 font-semibold truncate max-w-[120px] mt-0.5" title={rowDesc}>{rowDesc}</p>
+                            )}
+                          </td>
+                          
+                          {/* Foto Eviden 1 Button */}
+                          <td className="px-2 py-2 text-center">
+                            {uploadedEvidens[rowId]?.fotoEviden1 ? (
+                              <div className="flex flex-col items-center gap-1">
+                                <div 
+                                  onClick={() => {
+                                    setEvidencePhotoIdx(1);
+                                    setEvidenceModalRow(row);
+                                  }}
+                                  className="w-10 h-10 rounded overflow-hidden border border-cyan-455 group relative shadow-sm hover:scale-[1.05] transition-transform cursor-pointer mx-auto"
+                                  title="Klik untuk memperbesar eviden 1"
+                                >
+                                  <img 
+                                    src={uploadedEvidens[rowId].fotoEviden1} 
+                                    alt="Eviden 1" 
+                                    className="w-full h-full object-cover" 
+                                    referrerPolicy="no-referrer"
+                                  />
+                                </div>
+                                <span className="text-[6.5px] text-cyan-600 font-extrabold uppercase leading-none">Ada Foto</span>
+                              </div>
+                            ) : (
+                              <button 
+                                onClick={() => {
+                                  setEvidencePhotoIdx(1);
+                                  setEvidenceModalRow(row);
+                                }}
+                                className="inline-flex items-center gap-0.5 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white px-1.5 py-0.5 rounded text-[7px] font-black tracking-widest uppercase transition-all shadow-sm active:scale-95 cursor-pointer"
+                              >
+                                <Camera size={7} className="shrink-0" />
+                                <span>Eviden 1</span>
+                              </button>
+                            )}
+                          </td>
+
+                          {/* Foto Eviden 2 Button */}
+                          <td className="px-2 py-2 text-center">
+                            {uploadedEvidens[rowId]?.fotoEviden2 ? (
+                              <div className="flex flex-col items-center gap-1">
+                                <div 
+                                  onClick={() => {
+                                    setEvidencePhotoIdx(2);
+                                    setEvidenceModalRow(row);
+                                  }}
+                                  className="w-10 h-10 rounded overflow-hidden border border-emerald-400 group relative shadow-sm hover:scale-[1.05] transition-transform cursor-pointer mx-auto"
+                                  title="Klik untuk memperbesar eviden 2"
+                                >
+                                  <img 
+                                    src={uploadedEvidens[rowId].fotoEviden2} 
+                                    alt="Eviden 2" 
+                                    className="w-full h-full object-cover" 
+                                    referrerPolicy="no-referrer"
+                                  />
+                                </div>
+                                <span className="text-[6.5px] text-emerald-600 font-extrabold uppercase leading-none">Ada Foto</span>
+                              </div>
+                            ) : (
+                              <button 
+                                onClick={() => {
+                                  setEvidencePhotoIdx(2);
+                                  setEvidenceModalRow(row);
+                                }}
+                                className="inline-flex items-center gap-0.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white px-1.5 py-0.5 rounded text-[7px] font-black tracking-widest uppercase transition-all shadow-sm active:scale-95 cursor-pointer"
+                              >
+                                <Camera size={7} className="shrink-0" />
+                                <span>Eviden 2</span>
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div className="flex-1 w-full min-h-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart 
-                data={ulpChartData} 
-                margin={{ top: 20, right: 10, left: -20, bottom: 20 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis 
-                  dataKey="ulpName" 
-                  tick={{ fill: '#475569', fontSize: 8, fontWeight: 800 }} 
-                  tickLine={false} 
-                  axisLine={false}
-                  interval={0}
-                />
-                <YAxis 
-                  tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 500 }} 
-                  tickLine={false} 
-                  axisLine={false} 
-                />
-                <RechartsTooltip cursor={{ fill: 'rgba(6, 182, 212, 0.04)' }} content={<CustomBarTooltip />} />
-                <Bar dataKey="total" radius={[8, 8, 0, 0]} fill="#0f172a" maxBarSize={45}>
-                  {ulpChartData.map((entry, index) => {
-                    return (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={index === 0 ? '#06b6d4' : index % 2 === 0 ? '#1b3d5d' : '#3b82f6'} 
-                      />
-                    );
-                  })}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+
+          {/* Simple Pagination bar */}
+          {totalTindakPages > 1 && (
+            <div className="flex items-center justify-between border-t border-slate-100 pt-2 shrink-0">
+              <span className="text-[8px] text-slate-400 font-bold uppercase">
+                Halaman <span className="text-slate-700">{tindakPage}</span> dari <span className="text-slate-700">{totalTindakPages}</span>
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setTindakPage(p => Math.max(1, p - 1))}
+                  disabled={tindakPage === 1}
+                  className="p-1 px-1.5 bg-slate-50 border border-slate-200 rounded text-slate-600 hover:bg-slate-100 text-[8px] font-black uppercase disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                >
+                  Prev
+                </button>
+                <button
+                  onClick={() => setTindakPage(p => Math.min(totalTindakPages, p + 1))}
+                  disabled={tindakPage === totalTindakPages}
+                  className="p-1 px-1.5 bg-slate-50 border border-slate-200 rounded text-slate-600 hover:bg-slate-100 text-[8px] font-black uppercase disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
       </div>
 
       {/* Bespoke Universal Interactive Details Modal */}
       <AnimatePresence>
+        {evidenceModalRow && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop with elegant blur */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setEvidenceModalRow(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              id="evidence_modal_backdrop"
+            />
+
+            {/* Modal Body */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 15 }}
+              className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[90vh]"
+              id="evidence_detail_modal"
+            >
+              {/* Modal Header */}
+              <div className="bg-gradient-to-r from-cyan-600 to-[#1b3d5d] text-white p-4 flex items-center justify-between border-b border-gray-150">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-white/10">
+                    <Camera size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black tracking-widest uppercase">
+                      BUKTI FISIK / FOTO EVIDEN {evidencePhotoIdx}
+                    </h3>
+                    <p className="text-[8px] text-slate-300 font-extrabold uppercase tracking-widest mt-0.5">
+                      No Tugas: {evidenceModalRow[0] || "-"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEvidenceModalRow(null)}
+                  className="w-8 h-8 flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors rounded-xl bg-white/10 text-white"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-5 overflow-y-auto flex flex-col gap-4">
+                
+                {/* Switcher Tabs inside Modal */}
+                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  <button
+                    onClick={() => setEvidencePhotoIdx(1)}
+                    className={`flex-1 py-1.5 text-center rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                      evidencePhotoIdx === 1
+                        ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-sm"
+                        : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    Foto Eviden 1
+                  </button>
+                  <button
+                    onClick={() => setEvidencePhotoIdx(2)}
+                    className={`flex-1 py-1.5 text-center rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                      evidencePhotoIdx === 2
+                        ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-sm"
+                        : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    Foto Eviden 2
+                  </button>
+                </div>
+
+                {/* Simulated Image Viewer */}
+                <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-slate-900 border border-slate-200 shadow-inner">
+                  <img
+                    src={getEvidencePhotoUrl(evidenceModalRow, evidencePhotoIdx)}
+                    alt={`Foto Eviden Lapangan ${evidencePhotoIdx}`}
+                    className="w-full h-full object-cover opacity-90 hover:scale-[1.02] duration-300 transition-transform"
+                    referrerPolicy="no-referrer"
+                  />
+                  {/* Camera overlay HUD */}
+                  <div className="absolute inset-0 border-[8px] border-black/15 pointer-events-none flex flex-col justify-between p-4">
+                    <div className="flex justify-between items-start">
+                      <span className="bg-black/60 backdrop-blur-md text-cyan-400 font-mono text-[8px] px-2 py-0.5 rounded font-black tracking-widest">● LIVE CAM</span>
+                      <span className="bg-black/60 backdrop-blur-md text-white/90 font-mono text-[8px] px-2 py-0.5 rounded font-black">
+                        {evidenceModalRow[1] || "-"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-end">
+                      <span className="bg-rose-600/90 backdrop-blur-md text-white font-mono text-[8px] px-2 py-0.5 rounded font-black tracking-wider uppercase">
+                        ANOMALI DETECTED
+                      </span>
+                      <span className="bg-[#1b3d5d]/85 text-white font-mono text-[7px] px-1.5 py-0.5 rounded uppercase">
+                        {evidenceModalRow[3] || "ULP"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Details Card */}
+                <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 shrink-0">
+                  <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2.5">
+                    Rincian Kejadian & Temuan
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-[8px] font-bold text-slate-400 uppercase block">Petugas Lapangan</span>
+                      <span className="text-[10px] font-black text-slate-700 block mt-0.5 uppercase">
+                        {evidenceModalRow[2] || "TIDAK TERIDENTIFIKASI"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[8px] font-bold text-slate-400 uppercase block">Unit Pelayanan</span>
+                      <span className="text-[10px] font-black text-slate-700 block mt-0.5 uppercase">
+                        {evidenceModalRow[3] || "-"}
+                      </span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-[8px] font-bold text-slate-400 uppercase block">Jenis Kerawanan / Anomali</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {(evidenceModalRow[4] || "").split(",").map((v: string, i: number) => (
+                          <span key={i} className="px-2 py-0.5 text-[8.5px] font-black uppercase tracking-tight rounded bg-rose-50 text-rose-600 border border-rose-100 shadow-sm">
+                            {v.trim()}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    {evidenceModalRow[5] && evidenceModalRow[5] !== "-" && (
+                      <div className="col-span-2">
+                        <span className="text-[8px] font-bold text-slate-400 uppercase block">Keterangan / Temuan</span>
+                        <p className="text-[10px] font-semibold text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200 mt-1.5 leading-relaxed">
+                          {evidenceModalRow[5]}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    onClick={() => setEvidenceModalRow(null)}
+                    className="bg-[#1b3d5d] hover:bg-[#1b3d5d]/90 text-white w-full py-2.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-colors"
+                  >
+                    Tutup Eviden
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {detailModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             {/* Backdrop with elegant blur */}
