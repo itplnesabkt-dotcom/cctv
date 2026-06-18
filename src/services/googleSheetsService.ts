@@ -716,12 +716,6 @@ export class GoogleSheetsService {
 
       // Format date/time columns for raw output
       const rowToProcess = [...row];
-      if (woNameIdx !== -1 && woNameIdx < rowToProcess.length) {
-        rowToProcess[woNameIdx] = properName;
-      }
-      if (woUlpIdx !== -1 && woUlpIdx < rowToProcess.length) {
-        rowToProcess[woUlpIdx] = standardizedDisplayUlp;
-      }
       dateTimeIndices.forEach(idx => {
         if (idx < rowToProcess.length) {
           const val = String(rowToProcess[idx] || "").trim();
@@ -1062,14 +1056,7 @@ export class GoogleSheetsService {
       const isCctv = cctvVal.includes("CCTV");
 
       if (isUp3 && isFilteredForCctvTab && targetUlpFromRegu) {
-        const rowToProcess = [...row];
-        if (poNameIdx !== -1 && poNameIdx < rowToProcess.length) {
-          rowToProcess[poNameIdx] = properName;
-        }
-        if (poUlpIdx !== -1 && poUlpIdx < rowToProcess.length) {
-          rowToProcess[poUlpIdx] = targetUlpFromRegu || ulpName;
-        }
-        filteredPoRows.push(rowToProcess);
+        filteredPoRows.push([...row]);
         globalPoTasks.set(taskId, (globalPoTasks.get(taskId) || false) || isCctv);
       }
       
