@@ -11,6 +11,7 @@ import { DetailModal } from './components/DetailModal.tsx';
 import { OverSLAPage } from './components/OverSLAPage.tsx';
 import { RatingPage } from './components/RatingPage.tsx';
 import { AnomaliPage } from './components/AnomaliPage.tsx';
+import { AdminPage } from './components/AdminPage.tsx';
 import { GoogleSheetsService } from './services/googleSheetsService.ts';
 import { DashboardData } from './types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -23,7 +24,7 @@ export default function App() {
   const [selectedUlp, setSelectedUlp] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [activeTab, setActiveTab] = useState<'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING'>('CCTV');
+  const [activeTab, setActiveTab] = useState<'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING' | 'ADMIN'>('CCTV');
   
   // Clear filter when changing tabs since the filter source (ULP vs Posko) changes
   useEffect(() => {
@@ -97,10 +98,26 @@ export default function App() {
     const rawRows = type === 'WO' ? data.rawWoRows : data.rawPoRows;
     const indices = type === 'WO' ? data.woIndices : data.poIndices;
 
-    // Build officer to ULP map for fallback
-    const officerToUlpMap = new Map<string, string>();
+    const cleanName = (name: any) => {
+      return String(name || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    };
+
+    const cleanUlp = (ulp: any) => {
+      const str = String(ulp || "").toUpperCase()
+        .replace(/^POSKO ULP\s+/i, "")
+        .replace(/^ULP\s+/i, "")
+        .replace(/^POSKO\s+/i, "")
+        .replace(/[^A-Z0-9]/g, "")
+        .trim();
+      if (str.includes("PADANG") && str.includes("PANJANG")) return "PADANGPANJANG";
+      if (str.includes("KOTO") && str.includes("TUO")) return "KOTOTUO";
+      return str;
+    };
+
+    // Build officer to ULP map for fallback using standardized clean names
+    const officerToCleanUlpMap = new Map<string, string>();
     data.officerPerformance.forEach(op => {
-      officerToUlpMap.set(op.name.toLowerCase().trim(), op.ulp.toUpperCase().trim());
+      officerToCleanUlpMap.set(cleanName(op.name), cleanUlp(op.ulp));
     });
 
     let filteredRows = rawRows;
@@ -108,6 +125,7 @@ export default function App() {
     // 1. Filter by CCTV if requested
     if (isCctv) {
       filteredRows = filteredRows.filter(row => {
+        if (indices.cctv === -1 || indices.cctv >= row.length) return false;
         const cctvVal = String(row[indices.cctv] || '').toUpperCase();
         return cctvVal.includes('CCTV');
       });
@@ -117,24 +135,25 @@ export default function App() {
     if (identifier === "UP3" || identifier === "ALL") {
       setModalTitle(`DETAIL DATA ${type}${isCctv ? ' (CCTV)' : ''} - UP3 BUKITTINGGI`);
     } else if (isUlp) {
-      const targetUlp = identifier.toUpperCase().trim();
+      const targetUlpClean = cleanUlp(identifier);
       filteredRows = filteredRows.filter(row => {
         let rowUlp = "";
-        if (indices.ulp !== -1 && row[indices.ulp]) {
-          rowUlp = String(row[indices.ulp]).toUpperCase().replace(/^POSKO ULP\s+/i, '').trim();
-        } else {
+        if (indices.ulp !== -1 && indices.ulp < row.length && row[indices.ulp]) {
+          rowUlp = cleanUlp(row[indices.ulp]);
+        } else if (indices.name !== -1 && indices.name < row.length && row[indices.name]) {
           // Fallback to officer mapping
-          const rowName = String(row[indices.name] || '').toLowerCase().trim();
-          rowUlp = officerToUlpMap.get(rowName) || "";
+          const rowNameClean = cleanName(row[indices.name]);
+          rowUlp = officerToCleanUlpMap.get(rowNameClean) || "";
         }
-        return rowUlp === targetUlp;
+        return rowUlp === targetUlpClean;
       });
       setModalTitle(`DETAIL DATA ${type}${isCctv ? ' (CCTV)' : ''} - ULP: ${identifier}`);
     } else {
-      const targetName = identifier.toLowerCase().trim();
+      const targetNameClean = cleanName(identifier);
       filteredRows = filteredRows.filter(row => {
-        const rowName = String(row[indices.name] || '').toLowerCase().trim();
-        return rowName === targetName;
+        if (indices.name === -1 || indices.name >= row.length) return false;
+        const rowNameClean = cleanName(row[indices.name]);
+        return rowNameClean === targetNameClean;
       });
       setModalTitle(`DETAIL DATA ${type}${isCctv ? ' (CCTV)' : ''} - PETUGAS: ${identifier}`);
     }
@@ -371,6 +390,8 @@ export default function App() {
                 data={filteredData?.overSla || data.overSla} 
                 onDetailClick={handleOverSLADetailClick}
               />
+            ) : activeTab === 'ADMIN' ? (
+              <AdminPage anomaliList={data.anomali.anomaliList} />
             ) : (
               <RatingPage data={filteredData || data} />
             )}
