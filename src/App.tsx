@@ -103,22 +103,8 @@ export default function App() {
     };
 
     const cleanUlp = (ulp: any) => {
-      const str = String(ulp || "").toUpperCase()
-        .replace(/^POSKO ULP\s+/i, "")
-        .replace(/^ULP\s+/i, "")
-        .replace(/^POSKO\s+/i, "")
-        .replace(/[^A-Z0-9]/g, "")
-        .trim();
-      if (str.includes("PADANG") && str.includes("PANJANG")) return "PADANGPANJANG";
-      if (str.includes("KOTO") && str.includes("TUO")) return "KOTOTUO";
-      return str;
+      return String(ulp || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
     };
-
-    // Build officer to ULP map for fallback using standardized clean names
-    const officerToCleanUlpMap = new Map<string, string>();
-    data.officerPerformance.forEach(op => {
-      officerToCleanUlpMap.set(cleanName(op.name), cleanUlp(op.ulp));
-    });
 
     let filteredRows = rawRows;
 
@@ -137,15 +123,9 @@ export default function App() {
     } else if (isUlp) {
       const targetUlpClean = cleanUlp(identifier);
       filteredRows = filteredRows.filter(row => {
-        let rowUlp = "";
-        if (indices.ulp !== -1 && indices.ulp < row.length && row[indices.ulp]) {
-          rowUlp = cleanUlp(row[indices.ulp]);
-        } else if (indices.name !== -1 && indices.name < row.length && row[indices.name]) {
-          // Fallback to officer mapping
-          const rowNameClean = cleanName(row[indices.name]);
-          rowUlp = officerToCleanUlpMap.get(rowNameClean) || "";
-        }
-        return rowUlp === targetUlpClean;
+        if (indices.ulp === -1 || indices.ulp >= row.length) return false;
+        const rowUlpClean = cleanUlp(row[indices.ulp]);
+        return rowUlpClean === targetUlpClean;
       });
       setModalTitle(`DETAIL DATA ${type}${isCctv ? ' (CCTV)' : ''} - ULP: ${identifier}`);
     } else {
