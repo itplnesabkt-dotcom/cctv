@@ -16,13 +16,8 @@ import { GoogleSheetsService } from './services/googleSheetsService.ts';
 import { DashboardData } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Loader2 } from 'lucide-react';
-import { MaintenancePage } from './components/MaintenancePage.tsx';
 
 export default function App() {
-  return <MaintenancePage />;
-}
-
-export function OriginalDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +95,9 @@ export function OriginalDashboard() {
     if (!data) return;
 
     const headers = type === 'WO' ? data.woHeaders : data.poHeaders;
-    const rawRows = type === 'WO' ? data.rawWoRows : data.rawPoRows;
+    const rawRows = type === 'WO' 
+      ? (isUlp ? data.distinctWoRows : data.rawWoRows) 
+      : (isUlp ? data.distinctPoRows : data.rawPoRows);
     const indices = type === 'WO' ? data.woIndices : data.poIndices;
 
     const cleanName = (name: any) => {
@@ -205,12 +202,18 @@ export function OriginalDashboard() {
         title = "DETAIL WO RPT > 45 MENIT";
         break;
       case 'HIGHEST_RPT':
-        const maxRpt = Math.max(...rawRows.map(row => getRptValue(row)));
+        const maxRpt = rawRows.reduce((max, row) => {
+          const v = getRptValue(row);
+          return v > max ? v : max;
+        }, 0);
         filteredRows = rawRows.filter(row => getRptValue(row) === maxRpt);
         title = "DETAIL DURASI RPT TERTINGGI";
         break;
       case 'HIGHEST_RCT':
-        const maxRct = Math.max(...rawRows.map(row => getRctValue(row)));
+        const maxRct = rawRows.reduce((max, row) => {
+          const v = getRctValue(row);
+          return v > max ? v : max;
+        }, 0);
         filteredRows = rawRows.filter(row => getRctValue(row) === maxRct);
         title = "DETAIL DURASI RCT TERTINGGI";
         break;
@@ -259,8 +262,8 @@ export function OriginalDashboard() {
           setError(null);
         }
         setData(result);
-      } catch (err) {
-        console.error("Failed to fetch data:", err);
+      } catch (err: any) {
+        console.error("Failed to fetch data with stack trace:", err?.stack || err);
         setError("Gagal menghubungkan ke Google Sheets.");
       } finally {
         setIsRefreshing(false);
@@ -327,7 +330,7 @@ export function OriginalDashboard() {
       />
       <SubHeader 
         lastSync={data.summary.lastSync} 
-        dataAktif={data.summary.dataAktif} 
+        summary={data.summary} 
         selectedUlp={selectedUlp}
         onUlpChange={setSelectedUlp}
         ulpList={filterList}
@@ -353,8 +356,8 @@ export function OriginalDashboard() {
                 {/* Left Column - WO UP3 & ULP Cards */}
                 <div className="lg:col-span-3 flex flex-col">
                   <WOUP3Card 
-                    totalWo={filteredData?.summary.totalBaca || 0} 
-                    totalWoCctv={filteredData?.summary.totalValid || 0} 
+                    totalWo={filteredData?.summary.distinctTotalWo || 0} 
+                    totalWoCctv={filteredData?.summary.distinctTotalWoCctv || 0} 
                     onDetailClick={(isCctv) => handleDetailClick('WO', 'UP3', true, isCctv)}
                   />
                   <ULPStatsCard 
@@ -378,8 +381,8 @@ export function OriginalDashboard() {
                 {/* Right Column - PO UP3 & ULP Cards */}
                 <div className="lg:col-span-3 flex flex-col">
                   <POUP3Card 
-                    totalPo={filteredData?.summary.totalPo || 0} 
-                    totalPoCctv={filteredData?.summary.totalPoCctv || 0} 
+                    totalPo={filteredData?.summary.distinctTotalPo || 0} 
+                    totalPoCctv={filteredData?.summary.distinctTotalPoCctv || 0} 
                     onDetailClick={(isCctv) => handleDetailClick('PO', 'UP3', true, isCctv)}
                   />
                   <ULPPOStatsCard 
