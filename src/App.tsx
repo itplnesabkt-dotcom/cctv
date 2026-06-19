@@ -20,7 +20,9 @@ import { MaintenancePage } from './components/MaintenancePage.tsx';
 
 export default function App() {
   return <MaintenancePage />;
+}
 
+export function OriginalDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
