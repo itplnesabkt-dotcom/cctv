@@ -21,8 +21,19 @@ export interface DashboardData {
     tidakValid: number;
     totalPo: number;
     totalPoCctv: number;
+    distinctTotalWo?: number;
+    distinctTotalWoCctv?: number;
+    distinctTotalPo?: number;
+    distinctTotalPoCctv?: number;
     lastSync: string;
     dataAktif: number;
+    totalWo: number;
+    latestWoDate: string;
+    totalCctv: number;
+    latestCctvDate: string;
+    latestPoDate: string;
+    totalAnomali: number;
+    latestAnomaliDate: string;
   };
   allUlps: string[];
   allPoskos: string[];
@@ -31,6 +42,8 @@ export interface DashboardData {
   anomali: AnomaliData;
   rawWoRows: any[][];
   rawPoRows: any[][];
+  distinctWoRows: any[][];
+  distinctPoRows: any[][];
   woHeaders: string[];
   poHeaders: string[];
   woIndices: { name: number; ulp: number; cctv: number; tglLapor: number; tglPengerjaan: number; tglSelesai: number; source: number; reporter: number; shift: number; rpt: number; rct: number };
