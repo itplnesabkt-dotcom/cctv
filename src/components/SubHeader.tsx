@@ -3,7 +3,16 @@ import { Filter, Calendar, ChevronDown, Search, RotateCcw, RefreshCw } from 'luc
 
 interface SubHeaderProps {
   lastSync: string;
-  dataAktif: number;
+  summary: {
+    totalWo: number;
+    latestWoDate: string;
+    totalCctv: number;
+    latestCctvDate: string;
+    totalPo: number;
+    latestPoDate: string;
+    totalAnomali: number;
+    latestAnomaliDate: string;
+  };
   selectedUlp: string;
   onUlpChange: (ulp: string) => void;
   ulpList: string[];
@@ -16,7 +25,7 @@ interface SubHeaderProps {
 
 export const SubHeader: React.FC<SubHeaderProps> = ({ 
   lastSync, 
-  dataAktif, 
+  summary, 
   selectedUlp, 
   onUlpChange,
   ulpList,
@@ -46,14 +55,67 @@ export const SubHeader: React.FC<SubHeaderProps> = ({
           </h2>
         </div>
         
-        <div className="flex items-center gap-4">
-          <div className="bg-blue-600 text-white px-3 py-1 rounded-full flex items-center gap-2">
-            <span className="w-2 h-2 bg-green-400 rounded-full" />
-            <span className="text-[10px] font-black tracking-widest">{dataAktif} DATA AKTIF</span>
+         <div className="flex flex-wrap items-center gap-3">
+          {/* WO Badge */}
+          <div className="bg-blue-50 border border-blue-200 text-blue-950 rounded-xl px-3 py-1 flex flex-col justify-center shadow-sm">
+            <div className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+              <span className="text-[9px] font-black tracking-wider text-blue-800 uppercase">DATA WO</span>
+            </div>
+            <div className="flex items-baseline gap-2 mt-0.5">
+              <span className="text-xs font-black tracking-tight text-blue-900">{summary.totalWo}</span>
+              <span className="text-[8px] font-semibold text-blue-700 whitespace-nowrap">
+                Last: {summary.latestWoDate}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-gray-400">
-            <RefreshCw size={12} className="animate-spin-slow" />
-            <span className="text-[10px] font-bold uppercase">TERAKHIR SINKRONISASI: {lastSync}</span>
+
+          {/* CCTV Badge */}
+          <div className="bg-emerald-50 border border-emerald-200 text-emerald-950 rounded-xl px-3 py-1 flex flex-col justify-center shadow-sm">
+            <div className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+              <span className="text-[9px] font-black tracking-wider text-emerald-800 uppercase">DATA CCTV</span>
+            </div>
+            <div className="flex items-baseline gap-2 mt-0.5">
+              <span className="text-xs font-black tracking-tight text-emerald-900">{summary.totalCctv}</span>
+              <span className="text-[8px] font-semibold text-emerald-700 whitespace-nowrap">
+                Last: {summary.latestCctvDate}
+              </span>
+            </div>
+          </div>
+
+          {/* PO Badge */}
+          <div className="bg-purple-50 border border-purple-200 text-purple-950 rounded-xl px-3 py-1 flex flex-col justify-center shadow-sm">
+            <div className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-pulse" />
+              <span className="text-[9px] font-black tracking-wider text-purple-800 uppercase">DATA PO</span>
+            </div>
+            <div className="flex items-baseline gap-2 mt-0.5">
+              <span className="text-xs font-black tracking-tight text-purple-900">{summary.totalPo}</span>
+              <span className="text-[8px] font-semibold text-purple-700 whitespace-nowrap">
+                Last: {summary.latestPoDate}
+              </span>
+            </div>
+          </div>
+
+          {/* ANOMALI Badge */}
+          <div className="bg-amber-50 border border-amber-200 text-amber-905 rounded-xl px-3 py-1 flex flex-col justify-center shadow-sm">
+            <div className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
+              <span className="text-[9px] font-black tracking-wider text-amber-800 uppercase">DATA ANOMALI</span>
+            </div>
+            <div className="flex items-baseline gap-2 mt-0.5">
+              <span className="text-xs font-black tracking-tight text-amber-900">{summary.totalAnomali}</span>
+              <span className="text-[8px] font-semibold text-amber-700 whitespace-nowrap">
+                Last: {summary.latestAnomaliDate}
+              </span>
+            </div>
+          </div>
+
+          {/* Synchronized date info */}
+          <div className="hidden xl:flex items-center gap-1.5 text-gray-400 pl-2">
+            <RefreshCw size={10} className="animate-spin-slow animate-pulse" />
+            <span className="text-[8px] font-black uppercase tracking-wider">SYNC: {lastSync}</span>
           </div>
         </div>
       </div>
