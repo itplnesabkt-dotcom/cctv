@@ -16,8 +16,11 @@ import { GoogleSheetsService } from './services/googleSheetsService.ts';
 import { DashboardData } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Loader2 } from 'lucide-react';
+import { MaintenancePage } from './components/MaintenancePage.tsx';
 
 export default function App() {
+  return <MaintenancePage />;
+
   const [data, setData] = useState<DashboardData | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
