@@ -5,12 +5,12 @@ console.log('Starting project build...');
 try {
   // 1. Run Vite build
   console.log('Running vite build...');
-  execSync('vite build', { stdio: 'inherit' });
+  execSync('npx vite build', { stdio: 'inherit' });
 
   // 2. Build server if not on Cloudflare
   if (!process.env.CF_PAGES && !process.env.CLOUDFLARE) {
     console.log('Building server.ts for AI Studio environment...');
-    execSync('esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs', { stdio: 'inherit' });
+    execSync('npx esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs', { stdio: 'inherit' });
   } else {
     console.log('Cloudflare Pages environment detected. Skipping server.ts compilation to optimize serverless deploy.');
   }

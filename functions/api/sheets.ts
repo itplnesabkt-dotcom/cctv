@@ -1,4 +1,4 @@
-export const onRequest = async (context: { request: Request }): Promise<Response> => {
+export const onRequest = async (context: any): Promise<Response> => {
   const url = new URL(context.request.url);
   const sheetName = url.searchParams.get("sheetName");
   const customUrl = url.searchParams.get("customUrl");
