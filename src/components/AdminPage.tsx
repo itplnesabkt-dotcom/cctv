@@ -40,6 +40,71 @@ export interface EvidenUpload {
 
 export type EvidenMap = { [noTugas: string]: EvidenUpload };
 
+// Compress images tool to avoid Supabase "object exceeded maximum allowed size" and "Payload Too Large" problems
+const compressImage = (file: File, maxWidth: number = 1200, maxHeight: number = 1200, quality: number = 0.75): Promise<{ base64: string; blob: Blob }> => {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ base64: reader.result as string, blob: file });
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(img.src);
+      
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width = Math.round((width * maxHeight) / height);
+          height = maxHeight;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ base64: reader.result as string, blob: file });
+        reader.onerror = (err) => reject(err);
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const base64 = canvas.toDataURL('image/jpeg', quality);
+      
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve({ base64, blob });
+        } else {
+          resolve({ base64, blob: file });
+        }
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = (err) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ base64: reader.result as string, blob: file });
+      reader.onerror = (e) => reject(e);
+      reader.readAsDataURL(file);
+    };
+  });
+};
+
 export const AdminPage: React.FC<AdminPageProps> = ({ anomaliList = [] }) => {
   // Authentication states
   const [password, setPassword] = useState('');
@@ -543,16 +608,11 @@ function otorisasiIzinDrive() {
         }
       }
 
-      // Read file as base64
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-      });
-      reader.readAsDataURL(file);
-      const base64 = await base64Promise;
+      // Compress file to keep size optimized (avoid limits of Supabase or Payload Too Large server-side)
+      const { base64, blob: compressedBlob } = await compressImage(file);
 
-      const fileName = `EVIDEN_${evidenIdx}_${noTugas}_${Date.now()}.${file.name.split('.').pop()}`;
+      const extension = file.type.startsWith('image/') ? 'jpg' : (file.name.split('.').pop() || 'jpg');
+      const fileName = `EVIDEN_${evidenIdx}_${noTugas}_${Date.now()}.${extension}`;
 
       let imageUrl = '';
 
@@ -663,28 +723,8 @@ function otorisasiIzinDrive() {
             // Lazy instantiate Supabase client on client-side
             const clientSupabase = createClient(supabaseUrl, supabaseKey);
 
-            // Convert base64 data url directly to Blob in browser!
-            let blob: Blob;
-            const matches = base64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-            if (matches && matches.length === 3) {
-              const contentType = matches[1];
-              const byteCharacters = atob(matches[2]);
-              const byteNumbers = new Array(byteCharacters.length);
-              for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-              }
-              const byteArray = new Uint8Array(byteNumbers);
-              blob = new Blob([byteArray], { type: contentType });
-            } else {
-              const cleanBase64 = base64.includes(",") ? base64.split(",")[1] : base64;
-              const byteCharacters = atob(cleanBase64);
-              const byteNumbers = new Array(byteCharacters.length);
-              for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-              }
-              const byteArray = new Uint8Array(byteNumbers);
-              blob = new Blob([byteArray], { type: "image/jpeg" });
-            }
+            // Use the pre-computed compressedBlob directly!
+            const blob = compressedBlob;
 
             const { data: uploadData, error: uploadError } = await clientSupabase.storage
               .from(supabaseBucket)
