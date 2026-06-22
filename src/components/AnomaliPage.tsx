@@ -234,6 +234,14 @@ export const AnomaliPage: React.FC<AnomaliPageProps> = ({ data }) => {
 
   // Helper to determine the photo url based on anomaly description/types
   const getEvidencePhotoUrl = (row: any[], photoIdx: number = 1): string => {
+    // Check if the spreadsheet itself has FOTO EVIDEN 1/2 links first (online sync representation)
+    if (photoIdx === 1 && row[20]) {
+      return row[20];
+    }
+    if (photoIdx === 2 && row[21]) {
+      return row[21];
+    }
+
     const noTugas = String(row[0] || "");
     const customEviden = uploadedEvidens[noTugas];
     if (customEviden) {

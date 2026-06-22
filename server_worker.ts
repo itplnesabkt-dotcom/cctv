@@ -79,6 +79,78 @@ export default {
       }
     }
 
+    // 2.5 Route: /api/gas-proxy
+    if (url.pathname === "/api/gas-proxy") {
+      const gasUrl = url.searchParams.get("gasUrl");
+      if (!gasUrl) {
+        return new Response(JSON.stringify({ error: "Missing gasUrl parameter" }), {
+          status: 400,
+          headers: { 
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*"
+          },
+        });
+      }
+
+      try {
+        const bodyText = await request.text();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout for large images
+
+        let response = await fetch(gasUrl, {
+          method: "POST",
+          redirect: "manual",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "text/plain;charset=utf-8",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+          },
+          body: bodyText
+        });
+
+        // Follow redirect manually if 3xx status returned (common with GAS 302 redirects)
+        if (response.status >= 300 && response.status < 400) {
+          const redirectUrl = response.headers.get("Location");
+          if (redirectUrl) {
+            response = await fetch(redirectUrl, {
+              method: "GET",
+              signal: controller.signal,
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+              }
+            });
+          }
+        }
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          return new Response(JSON.stringify({ error: `GAS server returned status ${response.status}` }), {
+            status: response.status,
+            headers: { 
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*"
+            },
+          });
+        }
+
+        const resData = await response.text();
+        return new Response(resData, {
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message || "Internal server error proxying to Google Apps Script" }), {
+          status: 500,
+          headers: { 
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*"
+          },
+        });
+      }
+    }
+
     // 3. Fallback: serve static assets
     return await env.ASSETS.fetch(request);
   }

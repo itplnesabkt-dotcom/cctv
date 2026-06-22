@@ -48,7 +48,7 @@ export const SubHeader: React.FC<SubHeaderProps> = ({
             ) : activeTab === 'OVER_SLA' ? (
               <>MONITORING <span className="text-brand-secondary">OVER SLA RPT DAN RCT</span></>
             ) : activeTab === 'ADMIN' ? (
-              <>TINDAK LANJUT <span className="text-brand-secondary">ADMIN</span></>
+              <>HALAMAN <span className="text-brand-secondary">ADMIN PANEL</span></>
             ) : (
               <>MONITORING <span className="text-brand-secondary">RATING</span></>
             )}
