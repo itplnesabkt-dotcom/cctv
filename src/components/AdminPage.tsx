@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { 
   ShieldCheck, 
   Lock, 
@@ -54,6 +55,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ anomaliList = [] }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [copiedScript, setCopiedScript] = useState(false);
 
+  // Supabase direct configuration for Cloudflare client fallback
+  const [supabaseUrl, setSupabaseUrl] = useState('https://bicyhoavntfuwaesqwwf.supabase.co');
+  const [supabaseKey, setSupabaseKey] = useState('');
+  const [supabaseBucket, setSupabaseBucket] = useState('EVIDEN');
+
   // Connection diagnostics states
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState<{ type: 'success' | 'error' | 'warning', text: string } | null>(null);
@@ -95,6 +101,17 @@ export const AdminPage: React.FC<AdminPageProps> = ({ anomaliList = [] }) => {
     const savedMethod = localStorage.getItem('upload_method') || 'gdrive';
     setUploadMethod(savedMethod as 'server' | 'gdrive');
 
+    // Load Supabase Client-side Settings
+    const metaEnv = (import.meta as any).env || {};
+    const savedSupabaseUrl = localStorage.getItem('client_supabase_url') || metaEnv.VITE_SUPABASE_URL || 'https://bicyhoavntfuwaesqwwf.supabase.co';
+    setSupabaseUrl(savedSupabaseUrl);
+
+    const savedSupabaseKey = localStorage.getItem('client_supabase_key') || metaEnv.VITE_SUPABASE_KEY || '';
+    setSupabaseKey(savedSupabaseKey);
+
+    const savedSupabaseBucket = localStorage.getItem('client_supabase_bucket') || metaEnv.VITE_SUPABASE_BUCKET || 'EVIDEN';
+    setSupabaseBucket(savedSupabaseBucket);
+
     // Load Eviden mappings
     const savedEviden = localStorage.getItem('anomali_evidens');
     if (savedEviden) {
@@ -134,6 +151,28 @@ export const AdminPage: React.FC<AdminPageProps> = ({ anomaliList = [] }) => {
     setIsAuthenticated(false);
     sessionStorage.removeItem('admin_authenticated');
     setPassword('');
+  };
+
+  const [showSupabaseKey, setShowSupabaseKey] = useState(false);
+
+  // Connections saving handler
+  const handleSaveSupabaseConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    localStorage.setItem('client_supabase_url', supabaseUrl.trim());
+    localStorage.setItem('client_supabase_key', supabaseKey.trim());
+    localStorage.setItem('client_supabase_bucket', supabaseBucket.trim());
+    alert('Konfigurasi koneksi Supabase (client-side) berhasil disimpan!');
+    setShowSettings(false);
+  };
+
+  const handleResetSupabaseConfig = () => {
+    localStorage.removeItem('client_supabase_url');
+    localStorage.removeItem('client_supabase_key');
+    localStorage.removeItem('client_supabase_bucket');
+    setSupabaseUrl('https://bicyhoavntfuwaesqwwf.supabase.co');
+    setSupabaseKey('');
+    setSupabaseBucket('EVIDEN');
+    alert('Konfigurasi koneksi Supabase direset ke setelan awal!');
   };
 
   // Save GAS config
@@ -584,30 +623,100 @@ function otorisasiIzinDrive() {
         }
       } else {
         // Direct Supabase Storage API Upload
-        const supabaseResponse = await fetch('/api/upload-supabase', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            base64: base64,
-            fileName: fileName,
-            noTugas: noTugas,
-            evidenIdx: evidenIdx
-          })
-        });
+        let uploadedSuccess = false;
+        try {
+          const supabaseResponse = await fetch('/api/upload-supabase', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              base64: base64,
+              fileName: fileName,
+              noTugas: noTugas,
+              evidenIdx: evidenIdx
+            })
+          });
 
-        if (!supabaseResponse.ok) {
-          const errData = await supabaseResponse.json().catch(() => ({ error: 'Gagal menghubungi server Supabase' }));
-          throw new Error(errData.error || `Server Supabase merespon error: ${supabaseResponse.status}`);
+          if (supabaseResponse.ok) {
+            const supabaseData = await supabaseResponse.json();
+            if (supabaseData.success) {
+              imageUrl = supabaseData.url;
+              uploadedSuccess = true;
+            } else {
+              throw new Error(supabaseData.error || "Gagal mengunggah foto ke Supabase Storage via backend");
+            }
+          } else {
+            throw new Error(`Server backend merespon error: ${supabaseResponse.status}`);
+          }
+        } catch (backendError: any) {
+          console.warn("Backend Supabase upload failed or is unavailable (expected on Cloudflare Pages). Falling back to direct browser-to-supabase client upload:", backendError);
+          
+          // Fallback to client-side direct upload
+          try {
+            if (!supabaseKey) {
+              throw new Error(
+                "Koneksi Supabase Gagal (Cloudflare Fallback): Variabel 'SUPABASE_KEY' belum dikonfigurasi di pengaturan Admin Panel. Silakan klik tombol 'Setup Kunci Supabase' untuk memasukkan kunci Anda."
+              );
+            }
+
+            // Lazy instantiate Supabase client on client-side
+            const clientSupabase = createClient(supabaseUrl, supabaseKey);
+
+            // Convert base64 data url directly to Blob in browser!
+            let blob: Blob;
+            const matches = base64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+            if (matches && matches.length === 3) {
+              const contentType = matches[1];
+              const byteCharacters = atob(matches[2]);
+              const byteNumbers = new Array(byteCharacters.length);
+              for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+              }
+              const byteArray = new Uint8Array(byteNumbers);
+              blob = new Blob([byteArray], { type: contentType });
+            } else {
+              const cleanBase64 = base64.includes(",") ? base64.split(",")[1] : base64;
+              const byteCharacters = atob(cleanBase64);
+              const byteNumbers = new Array(byteCharacters.length);
+              for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+              }
+              const byteArray = new Uint8Array(byteNumbers);
+              blob = new Blob([byteArray], { type: "image/jpeg" });
+            }
+
+            const { data: uploadData, error: uploadError } = await clientSupabase.storage
+              .from(supabaseBucket)
+              .upload(fileName, blob, {
+                contentType: blob.type,
+                upsert: true
+              });
+
+            if (uploadError) {
+              console.error("Direct browser Supabase upload error detail:", uploadError);
+              throw new Error(`[Direct Upload Error] ${uploadError.message}`);
+            }
+
+            const { data: publicUrlData } = clientSupabase.storage
+              .from(supabaseBucket)
+              .getPublicUrl(fileName);
+
+            if (!publicUrlData || !publicUrlData.publicUrl) {
+              throw new Error("Gagal mengambil URL publik dari Storage Supabase (Client-Side).");
+            }
+
+            imageUrl = publicUrlData.publicUrl;
+            uploadedSuccess = true;
+          } catch (clientError: any) {
+            console.error("Direct client-side upload error too:", clientError);
+            throw new Error(
+              `Kesalahan koneksi ke Supabase (baik Backend maupun Client-Side gagal):\n` +
+              `Backend: ${backendError.message || backendError}\n` +
+              `Client: ${clientError.message || clientError}`
+            );
+          }
         }
-
-        const supabaseData = await supabaseResponse.json();
-        if (!supabaseData.success) {
-          throw new Error(supabaseData.error || "Gagal mengunggah foto ke Supabase Storage");
-        }
-
-        imageUrl = supabaseData.url;
 
         // If GAS URL is configured, sync the link directly to Google Sheets
         if (gasUrl) {
@@ -870,7 +979,7 @@ function otorisasiIzinDrive() {
     <div id="admin_dashboard_root" className="flex flex-col gap-6 p-6 bg-slate-50/50 rounded-2xl min-h-full">
       
       {/* Simple Status & Logout Header Bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white rounded-3xl p-5 border border-slate-205 shadow-sm gap-4 transition-all">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white rounded-3xl p-5 border border-slate-200 shadow-sm gap-4 transition-all">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-emerald-500/10 rounded-xl border border-emerald-500/20 shadow-inner">
             <ShieldCheck size={22} className="text-emerald-600" />
@@ -878,22 +987,145 @@ function otorisasiIzinDrive() {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-black text-slate-800 uppercase tracking-tight">Akun Admin Aktif</span>
-              <span className="bg-emerald-500/10 text-emerald-700 text-[8px] font-black tracking-widest px-2 py-0.5 rounded-full border border-emerald-550/20 uppercase font-sans">TEROTENTIKASI</span>
+              <span className="bg-emerald-500/10 text-emerald-700 text-[8px] font-black tracking-widest px-2 py-0.5 rounded-full border border-emerald-500/20 uppercase font-sans">TEROTENTIKASI</span>
             </div>
             <p className="text-[9.5px] text-slate-450 font-bold uppercase mt-1">
-              Sistem Unggah Eviden: Terkoneksi Otomatis ke Storage Supabase bucket <span className="text-blue-600 font-mono text-[9px] bg-blue-50 px-1 py-0.5 rounded border border-blue-100">EVIDEN</span>
+              Sistem Unggah Eviden: Terkoneksi Otomatis ke Storage Supabase bucket <span className="text-blue-600 font-mono text-[9.5px] bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">{supabaseBucket}</span>
             </p>
           </div>
         </div>
 
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/70 px-4 py-2.5 rounded-xl text-[9px] font-black tracking-widest uppercase transition-all cursor-pointer active:scale-95"
-        >
-          <LogOut size={13} className="stroke-[2.5]" />
-          Keluar Admin
-        </button>
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          {/* Cloudflare Supabase Setup Trigger */}
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[9px] font-black tracking-widest uppercase transition-all whitespace-nowrap cursor-pointer hover:scale-[1.02] active:scale-95 ${
+              showSettings 
+                ? "bg-slate-800 text-white shadow-md font-bold"
+                : "bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700"
+            }`}
+          >
+            <Settings2 size={13} />
+            {showSettings ? "Tutup Setup" : "Setup Kunci Supabase"}
+          </button>
+
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/70 px-4 py-2.5 rounded-xl text-[9px] font-black tracking-widest uppercase transition-all cursor-pointer active:scale-95"
+          >
+            <LogOut size={13} className="stroke-[2.5]" />
+            Keluar Admin
+          </button>
+        </div>
       </div>
+
+      {/* Supabase Connection Setup Panel overlay */}
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+            id="supabase_client_settings_panel"
+          >
+            <div className="bg-white rounded-3xl border border-gray-200 p-6 shadow-md flex flex-col gap-5">
+              <div>
+                <h3 className="text-xs font-black tracking-wider text-slate-800 uppercase flex items-center gap-1.5 mb-1.5">
+                  <Settings2 size={14} className="text-blue-600" />
+                  KONFIGURASI KONEKSI DIRECT SUPABASE (SOLUSI CLOUDFLARE)
+                </h3>
+                <p className="text-[9.5px] text-slate-500 font-bold uppercase leading-relaxed">
+                  Gunakan panel ini jika website Anda di-deploy di Cloudflare Pages/Workers (di mana backend Node.js tidak tersedia). Masukkan kredensial API Supabase Anda agar browser dapat mengunggah file langsung secara aman tanpa perantara server backend!
+                </p>
+              </div>
+
+              <form onSubmit={handleSaveSupabaseConfig} className="flex flex-col gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[8.5px] font-black uppercase text-slate-400 tracking-wider">SUPABASE URL</label>
+                    <input
+                      type="url"
+                      value={supabaseUrl}
+                      onChange={(e) => setSupabaseUrl(e.target.value)}
+                      placeholder="https://xyz.supabase.co"
+                      className="w-full mt-1 px-4 py-2.5 bg-slate-50 text-[10px] font-bold text-slate-800 rounded-lg border border-slate-200 focus:border-blue-500 outline-none placeholder:text-slate-400 font-mono"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[8.5px] font-black uppercase text-slate-400 tracking-wider">STORAGE BUCKET NAME</label>
+                    <input
+                      type="text"
+                      value={supabaseBucket}
+                      onChange={(e) => setSupabaseBucket(e.target.value)}
+                      placeholder="EVIDEN"
+                      className="w-full mt-1 px-4 py-2.5 bg-slate-50 text-[10px] font-bold text-slate-800 rounded-lg border border-slate-200 focus:border-blue-500 outline-none placeholder:text-slate-400 font-mono"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[8.5px] font-black uppercase text-slate-400 tracking-wider">SUPABASE KEY / SERVICE KEY</label>
+                  <div className="relative mt-1">
+                    <input
+                      type={showSupabaseKey ? "text" : "password"}
+                      value={supabaseKey}
+                      onChange={(e) => setSupabaseKey(e.target.value)}
+                      placeholder="Masukkan Anon/Service API Key Supabase Anda..."
+                      className="w-full px-4 py-2.5 bg-slate-50 text-[10px] pr-12 font-bold text-slate-800 rounded-lg border border-slate-200 focus:border-blue-500 outline-none placeholder:text-slate-400 font-mono"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowSupabaseKey(!showSupabaseKey)}
+                      className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 text-xs font-black tracking-widest cursor-pointer"
+                    >
+                      {showSupabaseKey ? "HIDE" : "SHOW"}
+                    </button>
+                  </div>
+                  <span className="text-[8px] text-slate-400 font-extrabold uppercase mt-1.5 block">
+                    Saran Keamanan: Setelan disimpan secara lokal di browser Anda (Local Storage) dan aman karena tidak dikirim ke pihak luar mana pun.
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 mt-2">
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-[9px] tracking-widest uppercase shadow-sm active:scale-95 transition-all cursor-pointer"
+                  >
+                    SIMPAN KREDENSIAL SUPABASE
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResetSupabaseConfig}
+                    className="px-5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-[9px] tracking-widest uppercase border border-rose-200 transition-all cursor-pointer"
+                  >
+                    RESET DEFAULT
+                  </button>
+                </div>
+              </form>
+
+              <div className="bg-sky-50 border border-sky-100 text-sky-850 p-4 rounded-2xl text-[9.5px] font-semibold leading-relaxed flex items-start gap-2.5">
+                <Info size={14} className="shrink-0 mt-0.5 text-sky-600" />
+                <div>
+                  <p className="font-extrabold uppercase text-[10px] text-sky-900 leading-snug">💬 TIPS DEPLOY CLOUDFLARE PAGES:</p>
+                  <p className="mt-1 font-bold">
+                    Untuk menghindari memasukkan kunci secara manual di setiap perangkat, Anda sangat disarankan untuk mendeklarasikan Variable Lingkungan (Environment Variables) di panel kontrol Cloudflare Pages Anda:
+                  </p>
+                  <ul className="list-disc list-inside mt-1.5 space-y-1 font-medium pl-1 text-slate-600">
+                    <li><strong className="text-slate-800">VITE_SUPABASE_URL</strong>: Masukkan url project Supabase Anda</li>
+                    <li><strong className="text-slate-800">VITE_SUPABASE_KEY</strong>: Masukkan API key anon/service Supabase Anda</li>
+                  </ul>
+                  <p className="mt-1.5 text-[8.5px] font-black text-blue-700">Aplikasi akan mendeteksi variabel di atas secara otomatis saat pertama kali dibuka!</p>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Table Section */}
       <div className="bg-white rounded-3xl border border-gray-150 shadow-sm overflow-hidden flex flex-col gap-4">
