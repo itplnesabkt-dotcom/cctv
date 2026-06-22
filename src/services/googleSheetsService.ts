@@ -108,6 +108,81 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Safe and precise resolver to map ULP to Nama Regu according to user requested criteria
+   */
+  public static getMappedRegu(ulp: string): string | null {
+    const u = String(ulp || "").toUpperCase()
+      .replace(/^POSKO ULP\s+/i, "")
+      .replace(/^ULP\s+/i, "")
+      .replace(/^POSKO\s+/i, "")
+      .trim();
+
+    if (u === "BUKITTINGGI" || u === "BUKITTIINGGI") return "Bukittinggi";
+    if (u === "PADANG PANJANG") return "padangpanjang";
+    if (u === "LUBUK SIKAPING") return "Lubuk Sikaping";
+    if (u === "LUBUK BASUNG") return "Lubuk Basung";
+    if (u === "SIMPANG EMPAT") return "Simpang Empat";
+    if (u === "BASO") return "Baso";
+    if (u === "KOTO TUO" || u === "KOTOTUO") return "KOTOTUO";
+
+    // Substring fallback checks for resilience
+    if (u.includes("BUKITTINGGI") || u.includes("BUKITTIINGGI")) return "Bukittinggi";
+    if (u.includes("PADANG") && u.includes("PANJANG")) return "padangpanjang";
+    if (u.includes("LUBUK") && u.includes("SIKAPING")) return "Lubuk Sikaping";
+    if (u.includes("LUBUK") && u.includes("BASUNG")) return "Lubuk Basung";
+    if (u.includes("SIMPANG") && u.includes("EMPAT")) return "Simpang Empat";
+    if (u.includes("BASO")) return "Baso";
+    if (u.includes("KOTO") && u.includes("TUO")) return "KOTOTUO";
+
+    return null;
+  }
+
+  /**
+   * Validates if a row has matched POSKO and Nama Regu combinations exactly as requested by user
+   */
+  public static isValidCctvRow(posko: string, regu: string): boolean {
+    const p = String(posko || "").toUpperCase().trim();
+    const r = String(regu || "").toUpperCase().trim();
+
+    // Direct exact matches of requested criteria (case-insensitive)
+    if (p === "POSKO ULP BUKITTINGGI" && r === "BUKITTINGGI") return true;
+    if (p === "POSKO ULP PADANG PANJANG" && r === "PADANGPANJANG") return true;
+    if (p === "POSKO ULP LUBUK SIKAPING" && r === "LUBUK SIKAPING") return true;
+    if (p === "POSKO ULP LUBUK BASUNG" && r === "LUBUK BASUNG") return true;
+    if (p === "POSKO ULP SIMPANG EMPAT" && r === "SIMPANG EMPAT") return true;
+    if (p === "POSKO ULP BASO" && r === "BASO") return true;
+    if (p === "POSKO ULP KOTO TUO" && r === "KOTOTUO") return true;
+
+    // Normalization fallback for slight spelling variants
+    const pClean = p.replace(/^POSKO\s+ULP\s+/i, "").replace(/^ULP\s+/i, "").replace(/^POSKO\s+/i, "").trim();
+    const rClean = r.replace(/\s+/g, "");
+
+    const allowedPairs: { [key: string]: string } = {
+      "BUKITTINGGI": "BUKITTINGGI",
+      "BUKITTIINGGI": "BUKITTINGGI",
+      "PADANG PANJANG": "PADANGPANJANG",
+      "LUBUK SIKAPING": "LUBUKSIKAPING",
+      "LUBUK BASUNG": "LUBUKBASUNG",
+      "SIMPANG EMPAT": "SIMPANGEMPAT",
+      "BASO": "BASO",
+      "KOTO TUO": "KOTOTUO",
+      "KOTOTUO": "KOTOTUO"
+    };
+
+    const targetRegu = allowedPairs[pClean];
+    if (targetRegu) {
+      return rClean === targetRegu;
+    }
+
+    // Fallback comparison if they match when clean
+    if (pClean && rClean && pClean.replace(/\s+/g, "") === rClean) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Safe and resilient RFC-4180 CSV / Date parser for spreadsheet records
    */
   private static parseDate(val: string): Date | null {
@@ -187,6 +262,7 @@ export class GoogleSheetsService {
     const woIndices = {
       name: findIndex(woHeaders, ["Nama Petugas", "Nama", "Petugas", "Name"], 10),
       ulp: findIndex(woHeaders, ["Posko", "Unit", "ULP", "ULP Id"], 3),
+      regu: findIndex(woHeaders, ["Nama Regu", "User Regu", "Regu"], 9),
       cctv: findIndex(woHeaders, ["CCTV", "CCTV VIDEO/FOTO", "CCTV Status"], 42),
       tglLapor: findIndex(woHeaders, ["TGL LAP", "Tgl Lapor", "Tanggal Lapor"], 44),
       tglPengerjaan: findIndex(woHeaders, ["Tgl Pengerjaan", "Mulai", "Tanggal Mulai"], 17),
@@ -204,6 +280,7 @@ export class GoogleSheetsService {
     const poIndices = {
       name: findIndex(poHeaders, ["Personil Yantek", "Personil", "Nama Petugas", "Petugas"], 10),
       ulp: findIndex(poHeaders, ["Posko", "Unit", "ULP"], 3),
+      regu: findIndex(poHeaders, ["Nama Regu", "User Regu", "Regu"], 8),
       cctv: findIndex(poHeaders, ["CCTV", "CCTV VIDEO/FOTO"], 24),
       noTugas: findIndex(poHeaders, ["No Tugas", "No. Tugas", "Nomor Tugas", "No Referensi"], 4)
     };
@@ -212,7 +289,7 @@ export class GoogleSheetsService {
     const endObj = endDateStr ? new Date(endDateStr + "T23:59:59") : null;
 
     // Filters WO rows by active date
-    const dataWoRows = woRows.slice(1).filter(row => {
+    const rawFilteredWoRows = woRows.slice(1).filter(row => {
       if (!row || row.length === 0) return false;
       const tglStr = String(row[woIndices.tglLapor] || "").trim();
       const rowDate = this.parseDate(tglStr);
@@ -222,8 +299,19 @@ export class GoogleSheetsService {
       return true;
     });
 
+    // Apply strict POSKO & Nama Regu criteria check for WO rows
+    const dataWoRows = rawFilteredWoRows.filter(row => {
+      const poskoVal = woIndices.ulp !== -1 && woIndices.ulp < row.length ? String(row[woIndices.ulp]) : "";
+      const reguIndex = woIndices.regu;
+      if (reguIndex === -1 || reguIndex >= row.length) {
+        return true; // Bypass for short mock datasets
+      }
+      const reguVal = String(row[reguIndex]);
+      return GoogleSheetsService.isValidCctvRow(poskoVal, reguVal);
+    });
+
     // Filters PO rows by active date
-    const dataPoRows = poRows.slice(1).filter(row => {
+    const rawFilteredPoRows = poRows.slice(1).filter(row => {
       if (!row || row.length === 0) return false;
       const tglIdx = findIndex(poHeaders, ["TGL", "Tgl Catat", "Tanggal PO"], 25);
       const tglStr = String(row[tglIdx] || "").trim();
@@ -232,6 +320,17 @@ export class GoogleSheetsService {
       if (startObj && rowDate < startObj) return false;
       if (endObj && rowDate > endObj) return false;
       return true;
+    });
+
+    // Apply strict POSKO & Nama Regu criteria check for PO rows
+    const dataPoRows = rawFilteredPoRows.filter(row => {
+      const poskoVal = poIndices.ulp !== -1 && poIndices.ulp < row.length ? String(row[poIndices.ulp]) : "";
+      const reguIndex = poIndices.regu;
+      if (reguIndex === -1 || reguIndex >= row.length) {
+        return true; // Bypass for short mock datasets
+      }
+      const reguVal = String(row[reguIndex]);
+      return GoogleSheetsService.isValidCctvRow(poskoVal, reguVal);
     });
 
     // CCTV Verification Helper
@@ -423,6 +522,8 @@ export class GoogleSheetsService {
     const listrikColIdx = findIndex(anomaliHeaders, ["Antisipasi tersengat Listrik"], 19);
     const jatuhColIdx = findIndex(anomaliHeaders, ["Antisipasi Terjatuh dari Ketinggian"], 20);
     const selesaiColIdx = findIndex(anomaliHeaders, ["Laporan Pekerjaan Selesai"], 21);
+    const foto1ColIdx = findIndex(anomaliHeaders, ["FOTO EVIDEN 1", "EVIDEN 1"], -1);
+    const foto2ColIdx = findIndex(anomaliHeaders, ["FOTO EVIDEN 2", "EVIDEN 2"], -1);
 
     const rawAnomRows = anomaliRows.slice(1).filter(row => {
       if (!row || row.length === 0) return false;
@@ -920,7 +1021,9 @@ export class GoogleSheetsService {
         String(row[briefingColIdx] || "").trim(),
         String(row[listrikColIdx] || "").trim(),
         String(row[jatuhColIdx] || "").trim(),
-        String(row[selesaiColIdx] || "").trim()
+        String(row[selesaiColIdx] || "").trim(),
+        foto1ColIdx !== -1 ? String(row[foto1ColIdx] || "").trim() : "",
+        foto2ColIdx !== -1 ? String(row[foto2ColIdx] || "").trim() : ""
       ]);
     });
 
