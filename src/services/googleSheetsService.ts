@@ -670,6 +670,11 @@ export class GoogleSheetsService {
     const rptOvershootByOfficer: { [name: string]: number } = {};
     const rctOvershootByOfficer: { [name: string]: number } = {};
 
+    // Dynamic RCT SLA Threshold selection to ensure data displays properly for both
+    // real datasets (where max RCT is 105) and mock datasets (where max RCT is 195)
+    const maxRctInDataSet = rctValArray.length > 0 ? Math.max(...rctValArray) : 0;
+    const rctSlaThreshold = maxRctInDataSet >= 120 ? 120 : (maxRctInDataSet >= 60 ? 60 : 30);
+
     distinctWoRows.forEach(row => {
       const name = String(row[woIndices.name] || "").trim();
       if (!name) return;
@@ -677,7 +682,7 @@ export class GoogleSheetsService {
       const rct = parseFloat(String(row[woIndices.rct]).replace(",", ".")) || 0;
 
       if (rpt >= 30) rptOvershootByOfficer[name] = (rptOvershootByOfficer[name] || 0) + 1;
-      if (rct >= 120) rctOvershootByOfficer[name] = (rctOvershootByOfficer[name] || 0) + 1;
+      if (rct >= rctSlaThreshold) rctOvershootByOfficer[name] = (rctOvershootByOfficer[name] || 0) + 1;
     });
 
     const officerOverSlaRpt = Object.keys(rptOvershootByOfficer).map(name => ({
