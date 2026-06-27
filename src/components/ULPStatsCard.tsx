@@ -27,7 +27,11 @@ export const ULPStatsCard: React.FC<ULPStatsCardProps> = ({ ulpData, onDetailCli
       ulp: name,
       jumlahWoTotal: 0,
       totalWoPakaiCctv: 0,
-      persenPenggunaanCctv: "0%"
+      persenWo: "100%",
+      jumlahPoTotal: 0,
+      totalPoPakaiCctv: 0,
+      persenPo: "100%",
+      persenPenggunaanCctv: "100%"
     };
   });
 

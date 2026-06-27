@@ -9,7 +9,7 @@ interface WOUP3CardProps {
 }
 
 export const WOUP3Card: React.FC<WOUP3CardProps> = ({ totalWo, totalWoCctv, onDetailClick }) => {
-  const percent = totalWo > 0 ? Math.round((totalWoCctv / totalWo) * 100) : 0;
+  const percent = totalWo === 0 ? 100 : Math.round((totalWoCctv / totalWo) * 100);
 
   return (
     <div className="dashboard-card flex flex-col shrink-0">

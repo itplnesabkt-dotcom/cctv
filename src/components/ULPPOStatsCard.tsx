@@ -25,9 +25,13 @@ export const ULPPOStatsCard: React.FC<ULPPOStatsCardProps> = ({ ulpData, onDetai
     const found = ulpData.find(d => d.ulp.toUpperCase().includes(name));
     return found || {
       ulp: name,
+      jumlahWoTotal: 0,
+      totalWoPakaiCctv: 0,
+      persenWo: "100%",
       jumlahPoTotal: 0,
       totalPoPakaiCctv: 0,
-      persenPo: "0%"
+      persenPo: "100%",
+      persenPenggunaanCctv: "100%"
     };
   });
 

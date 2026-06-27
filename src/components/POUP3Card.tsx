@@ -9,7 +9,7 @@ interface POUP3CardProps {
 }
 
 export const POUP3Card: React.FC<POUP3CardProps> = ({ totalPo, totalPoCctv, onDetailClick }) => {
-  const percent = totalPo > 0 ? Math.round((totalPoCctv / totalPo) * 100) : 0;
+  const percent = totalPo === 0 ? 100 : Math.round((totalPoCctv / totalPo) * 100);
 
   return (
     <div className="dashboard-card flex flex-col shrink-0">

@@ -410,8 +410,8 @@ export class GoogleSheetsService {
 
     const officerPerformance: OfficerPerformance[] = Object.keys(officerMap).map(name => {
       const o = officerMap[name];
-      const persenWo = o.woTotal > 0 ? ((o.woCctv / o.woTotal) * 100).toFixed(1) + "%" : "0%";
-      const persenPo = o.poTotal > 0 ? ((o.poCctv / o.poTotal) * 100).toFixed(1) + "%" : "0%";
+      const persenWo = o.woTotal > 0 ? ((o.woCctv / o.woTotal) * 100).toFixed(1) + "%" : "100%";
+      const persenPo = o.poTotal > 0 ? ((o.poCctv / o.poTotal) * 100).toFixed(1) + "%" : "100%";
       return {
         name,
         ulp: o.ulp,
@@ -460,11 +460,11 @@ export class GoogleSheetsService {
 
     const ulpPerformance: ULPPerformance[] = Object.keys(ulpMap).map(ulp => {
       const u = ulpMap[ulp];
-      const persenWo = u.woTotal > 0 ? ((u.woCctv / u.woTotal) * 100).toFixed(1) + "%" : "0%";
-      const persenPo = u.poTotal > 0 ? ((u.poCctv / u.poTotal) * 100).toFixed(1) + "%" : "0%";
+      const persenWo = u.woTotal > 0 ? ((u.woCctv / u.woTotal) * 100).toFixed(1) + "%" : "100%";
+      const persenPo = u.poTotal > 0 ? ((u.poCctv / u.poTotal) * 100).toFixed(1) + "%" : "100%";
       const totalCctv = u.woCctv + u.poCctv;
       const totalJobs = u.woTotal + u.poTotal;
-      const persenPenggunaanCctv = totalJobs > 0 ? ((totalCctv / totalJobs) * 100).toFixed(1) + "%" : "0%";
+      const persenPenggunaanCctv = totalJobs > 0 ? ((totalCctv / totalJobs) * 100).toFixed(1) + "%" : "100%";
 
       return {
         ulp,
@@ -481,11 +481,11 @@ export class GoogleSheetsService {
     let cctvCounter = 1;
     const cctvUsage: CCTVUsage[] = Object.keys(officerMap).map(name => {
       const o = officerMap[name];
-      const persenWo = o.woTotal > 0 ? ((o.woCctv / o.woTotal) * 100).toFixed(1) + "%" : "0%";
-      const persenPo = o.poTotal > 0 ? ((o.poCctv / o.poTotal) * 100).toFixed(1) + "%" : "0%";
+      const persenWo = o.woTotal > 0 ? ((o.woCctv / o.woTotal) * 100).toFixed(1) + "%" : "100%";
+      const persenPo = o.poTotal > 0 ? ((o.poCctv / o.poTotal) * 100).toFixed(1) + "%" : "100%";
       const totalCctv = o.woCctv + o.poCctv;
       const totalJobs = o.woTotal + o.poTotal;
-      const persenPenggunaanCctv = totalJobs > 0 ? ((totalCctv / totalJobs) * 100).toFixed(1) + "%" : "0%";
+      const persenPenggunaanCctv = totalJobs > 0 ? ((totalCctv / totalJobs) * 100).toFixed(1) + "%" : "100%";
 
       return {
         no: cctvCounter++,
