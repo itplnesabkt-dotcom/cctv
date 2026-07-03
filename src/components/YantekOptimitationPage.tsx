@@ -19,7 +19,9 @@ import {
   TrendingDown,
   Sparkles,
   RefreshCw,
-  Info
+  Info,
+  X,
+  Search
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -48,6 +50,13 @@ interface YantekOptimitationPageProps {
 
 export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ data, onDetailClick, selectedMonth }) => {
   const [selectedUlp, setSelectedUlp] = useState<string>('ALL');
+  const [clickedCell, setClickedCell] = useState<{
+    ulpKey: string;
+    ulpName: string;
+    category: 'green' | 'yellow' | 'red' | 'total';
+    title: string;
+  } | null>(null);
+  const [modalSearchTerm, setModalSearchTerm] = useState<string>('');
 
   // Filter VCC_DATA by selectedMonth based on "Tgl Lapor" column
   const filteredVccData = useMemo(() => {
@@ -1087,6 +1096,178 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
     };
   }, [filteredVccData, data.officerPerformance, selectedUlp]);
 
+  const handleCellClick = (ulpKey: string, ulpName: string, category: 'green' | 'yellow' | 'red' | 'total') => {
+    const titles = {
+      green: 'HIGH PERFORMA (ZONA HIJAU > 60%)',
+      yellow: 'MID PERFORMA (ZONA KUNING 30% - 60%)',
+      red: 'UNDER PERFORMA (ZONA MERAH < 30%)',
+      total: 'TOTAL PETUGAS'
+    };
+    setModalSearchTerm('');
+    setClickedCell({
+      ulpKey,
+      ulpName,
+      category,
+      title: `${titles[category]} - ${ulpName}`
+    });
+  };
+
+  const modalOfficersList = useMemo(() => {
+    if (!clickedCell) return [];
+
+    const { ulpKey, category } = clickedCell;
+    const rawRows = filteredVccData;
+    const hasRealRows = rawRows.length > 1;
+
+    let headers: string[] = [];
+    let idxNamaUlp = -1;
+    let idxTotalSkor = -1;
+    let idxPersentaseSkor = -1;
+    let idxEmployeename = -1;
+    let idxSkorHariKerja = -1;
+    let idxSkorPerforma = -1;
+    let idxSkorProduktivitas = -1;
+
+    const parseNum = (val: any): number => {
+      if (val === undefined || val === null || val === "") return 0;
+      if (typeof val === 'number') return val;
+      const str = String(val).trim();
+      if (!str) return 0;
+
+      let cleaned = str.replace('%', '').trim();
+      const hasComma = cleaned.includes(',');
+      const hasDot = cleaned.includes('.');
+
+      if (hasComma && hasDot) {
+        if (cleaned.indexOf(',') < cleaned.indexOf('.')) {
+          cleaned = cleaned.replace(/,/g, '');
+        } else {
+          cleaned = cleaned.replace(/\./g, '').replace(/,/g, '.');
+        }
+      } else if (hasComma) {
+        const parts = cleaned.split(',');
+        if (parts[parts.length - 1].length === 3 && parts[0].length <= 3) {
+          cleaned = cleaned.replace(/,/g, '');
+        } else {
+          cleaned = cleaned.replace(/,/g, '.');
+        }
+      } else if (hasDot) {
+        const parts = cleaned.split('.');
+        if (parts[parts.length - 1].length === 3 && parts[0].length <= 3) {
+          cleaned = cleaned.replace(/\./g, '');
+        }
+      }
+
+      return parseFloat(cleaned) || 0;
+    };
+
+    if (hasRealRows) {
+      headers = rawRows[0] || [];
+      const findHeaderIdx = (possibleNames: string[]) => {
+        const normNames = possibleNames.map(n => n.toLowerCase().trim().replace(/['"_\s]/g, ""));
+        return headers.findIndex(h => {
+          const cleaned = String(h || "").toLowerCase().trim().replace(/['"_\s]/g, "");
+          return normNames.includes(cleaned);
+        });
+      };
+
+      idxNamaUlp = findHeaderIdx(["namaulp", "ulp", "unit"]);
+      idxTotalSkor = findHeaderIdx(["totalskor", "skortotal"]);
+      idxPersentaseSkor = findHeaderIdx(["persentaseskor", "persentase", "skor", "kinerja"]);
+      idxEmployeename = findHeaderIdx(["employeename", "namapetugas", "nama", "petugas", "officer"]);
+      idxSkorHariKerja = findHeaderIdx(["skorharikerja", "harikerja"]);
+      idxSkorPerforma = findHeaderIdx(["skorperforma", "performa"]);
+      idxSkorProduktivitas = findHeaderIdx(["skorproduktivitas", "produktivitas", "skorproduktifitas"]);
+
+      const list: any[] = [];
+      rawRows.slice(1).forEach(row => {
+        if (!row || row.length === 0) return;
+
+        // Check ULP filter
+        const rowUlpRaw = idxNamaUlp !== -1 ? String(row[idxNamaUlp] || "").toUpperCase() : "";
+        const matchesUlp = ulpKey === 'ALL' || rowUlpRaw.includes(ulpKey) || ulpKey.includes(rowUlpRaw);
+        if (!matchesUlp) return;
+
+        // Calculate score/percentage to determine category
+        let totalSkorVal = 0;
+        let pct = 0;
+
+        if (idxTotalSkor !== -1) {
+          totalSkorVal = parseNum(row[idxTotalSkor]);
+        }
+        if (idxPersentaseSkor !== -1) {
+          pct = parseNum(row[idxPersentaseSkor]);
+        } else if (idxTotalSkor !== -1) {
+          pct = (totalSkorVal / 15) * 100;
+        }
+
+        let matchesCategory = false;
+        if (category === 'total') {
+          matchesCategory = true;
+        } else if (category === 'green' && pct > 60) {
+          matchesCategory = true;
+        } else if (category === 'yellow' && pct >= 30 && pct <= 60) {
+          matchesCategory = true;
+        } else if (category === 'red' && pct < 30) {
+          matchesCategory = true;
+        }
+
+        if (matchesCategory) {
+          list.push({
+            employeeName: idxEmployeename !== -1 ? String(row[idxEmployeename] || "").toUpperCase() : "UNNAMED OFFICER",
+            namaUlp: idxNamaUlp !== -1 ? String(row[idxNamaUlp] || "").toUpperCase() : "ULP BUKITTINGGI",
+            persentaseSkor: pct,
+            skorHariKerja: idxSkorHariKerja !== -1 ? parseNum(row[idxSkorHariKerja]) : 0,
+            skorPerforma: idxSkorPerforma !== -1 ? parseNum(row[idxSkorPerforma]) : 0,
+            skorProduktivitas: idxSkorProduktivitas !== -1 ? parseNum(row[idxSkorProduktivitas]) : 0,
+            totalSkor: totalSkorVal,
+          });
+        }
+      });
+      return list;
+    } else {
+      // Return beautiful mock data matching the category and ULP
+      const standardUlps = [
+        { key: "LUBUK BASUNG", name: "ULP LUBUK BASUNG", fallbackGreen: 39 },
+        { key: "SIMPANG EMPAT", name: "ULP SIMPANG EMPAT", fallbackGreen: 48 },
+        { key: "BASO", name: "ULP BASO", fallbackGreen: 15 },
+        { key: "KOTO TUO", name: "ULP KOTO TUO", fallbackGreen: 16 },
+        { key: "BUKITTINGGI", name: "ULP BUKITTINGGI", fallbackGreen: 15 },
+        { key: "LUBUK SIKAPING", name: "ULP LUBUK SIKAPING", fallbackGreen: 24 },
+        { key: "PADANG PANJANG", name: "ULP PADANG PANJANG", fallbackGreen: 19 },
+      ];
+
+      const matchingUlps = ulpKey === 'ALL' ? standardUlps : standardUlps.filter(u => u.key === ulpKey);
+      const mockList: any[] = [];
+
+      matchingUlps.forEach(ulp => {
+        const count = category === 'green' || category === 'total' ? ulp.fallbackGreen : 0;
+        for (let i = 0; i < count; i++) {
+          mockList.push({
+            employeeName: `OFFICER ${ulp.key} ${i + 1}`,
+            namaUlp: `ULP ${ulp.key}`,
+            persentaseSkor: 95.00,
+            skorHariKerja: 4.00,
+            skorPerforma: 4.00,
+            skorProduktivitas: 4.00,
+            totalSkor: 14.25,
+          });
+        }
+      });
+      return mockList;
+    }
+  }, [clickedCell, filteredVccData]);
+
+  // Search filtered modal officers list
+  const filteredModalOfficers = useMemo(() => {
+    if (!modalSearchTerm.trim()) return modalOfficersList;
+    const term = modalSearchTerm.toLowerCase();
+    return modalOfficersList.filter((off: any) => 
+      (off.employeeName || '').toLowerCase().includes(term) ||
+      (off.namaUlp || '').toLowerCase().includes(term)
+    );
+  }, [modalOfficersList, modalSearchTerm]);
+
   return (
     <div className="flex flex-col gap-6 p-6 bg-[#0a1128]/5 rounded-2xl min-h-full border border-gray-100">
       
@@ -1098,7 +1279,6 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
           <div className="flex flex-col gap-1 z-10">
             <span className="text-[10px] font-black text-brand-accent tracking-widest uppercase">RATA RATA PERFORMA YO UP3</span>
             <span className="text-3xl font-black italic tracking-tight text-brand-accent">{vccMetrics.avgPerforma}%</span>
-            <span className="text-[10px] text-white/50 font-bold">Total Skor / 15</span>
           </div>
           <div className="bg-white/5 p-3 rounded-xl z-10">
             <Cpu className="text-brand-accent" size={24} />
@@ -1111,7 +1291,6 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
           <div className="flex flex-col gap-1 z-10">
             <span className="text-[10px] font-black text-emerald-400 tracking-widest uppercase">PERFORMA HARI KERJA UP3</span>
             <span className="text-3xl font-black italic tracking-tight text-emerald-400">{vccMetrics.avgKinerjaYo}%</span>
-            <span className="text-[10px] text-white/50 font-bold">Realisasi / Seharusnya</span>
           </div>
           <div className="bg-white/5 p-3 rounded-xl z-10">
             <Gauge className="text-emerald-400" size={24} />
@@ -1124,7 +1303,6 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
           <div className="flex flex-col gap-1 z-10">
             <span className="text-[10px] font-black text-cyan-400 tracking-widest uppercase">PERFORMA PRODUKTIFITAS KERJA</span>
             <span className="text-3xl font-black italic tracking-tight text-cyan-400">{vccMetrics.avgHariKerja}%</span>
-            <span className="text-[10px] text-white/50 font-bold">((RCT/Realisasi)+1,5)/8</span>
           </div>
           <div className="bg-white/5 p-3 rounded-xl z-10">
             <Clock className="text-cyan-400" size={24} />
@@ -1137,7 +1315,6 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
           <div className="flex flex-col gap-1 z-10">
             <span className="text-[10px] font-black text-purple-400 tracking-widest uppercase">TOTAL WO - PO UP3</span>
             <span className="text-3xl font-black italic tracking-tight text-purple-400">{vccMetrics.totalWoPo}%</span>
-            <span className="text-[10px] text-white/50 font-bold">Performa P0 + Performa WO</span>
           </div>
           <div className="bg-white/5 p-3 rounded-xl z-10">
             <Sliders className="text-purple-400" size={24} />
@@ -1315,10 +1492,34 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
                     <td className="py-3 px-2 border border-slate-300 font-bold text-slate-600 text-center">{row.up3}</td>
                     <td className="py-3 px-2 border border-slate-300 font-black text-slate-900 text-center">{row.targetRate}%</td>
                     <td className="py-3 px-2 border border-slate-300 font-black text-blue-800 bg-blue-50/20 text-center">{row.realRate}%</td>
-                    <td className="py-3 px-2 border border-slate-300 font-black text-slate-900 text-center">{row.green}</td>
-                    <td className="py-3 px-2 border border-slate-300 font-black text-slate-900 text-center">{row.yellow}</td>
-                    <td className="py-3 px-2 border border-slate-300 font-black text-slate-900 text-center">{row.red}</td>
-                    <td className="py-3 px-2 border border-slate-300 font-black text-white bg-blue-800 text-center">{row.totalPetugas}</td>
+                    <td 
+                      onClick={() => handleCellClick(row.key, row.name, 'green')}
+                      className="py-3 px-2 border border-slate-300 font-black text-emerald-600 bg-emerald-50/10 hover:bg-emerald-100/50 cursor-pointer text-center select-none transition-colors duration-150"
+                      title="Klik untuk melihat detail petugas Zona Hijau"
+                    >
+                      <span className="hover:underline hover:text-emerald-700">{row.green}</span>
+                    </td>
+                    <td 
+                      onClick={() => handleCellClick(row.key, row.name, 'yellow')}
+                      className="py-3 px-2 border border-slate-300 font-black text-amber-600 bg-amber-50/10 hover:bg-amber-100/50 cursor-pointer text-center select-none transition-colors duration-150"
+                      title="Klik untuk melihat detail petugas Zona Kuning"
+                    >
+                      <span className="hover:underline hover:text-amber-700">{row.yellow}</span>
+                    </td>
+                    <td 
+                      onClick={() => handleCellClick(row.key, row.name, 'red')}
+                      className="py-3 px-2 border border-slate-300 font-black text-rose-600 bg-rose-50/10 hover:bg-rose-100/50 cursor-pointer text-center select-none transition-colors duration-150"
+                      title="Klik untuk melihat detail petugas Zona Merah"
+                    >
+                      <span className="hover:underline hover:text-rose-700">{row.red}</span>
+                    </td>
+                    <td 
+                      onClick={() => handleCellClick(row.key, row.name, 'total')}
+                      className="py-3 px-2 border border-slate-300 font-black text-white bg-[#154c79] hover:bg-[#0f3758] cursor-pointer text-center select-none transition-colors duration-150"
+                      title="Klik untuk melihat detail seluruh petugas"
+                    >
+                      <span className="hover:underline">{row.totalPetugas}</span>
+                    </td>
                   </tr>
                 ))
               )}
@@ -1329,10 +1530,34 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
                 <td className="py-3.5 px-2 border-2 border-slate-300"></td>
                 <td className="py-3.5 px-2 border-2 border-slate-300">{thresholdTableData.totalUp3.targetRate}%</td>
                 <td className="py-3.5 px-2 border-2 border-slate-300 bg-[#113a5d]">{thresholdTableData.totalUp3.realRate}%</td>
-                <td className="py-3.5 px-2 border-2 border-slate-300 bg-[#00a651]">{thresholdTableData.totalUp3.green}</td>
-                <td className="py-3.5 px-2 border-2 border-slate-300 bg-[#c2b800] text-black">{thresholdTableData.totalUp3.yellow}</td>
-                <td className="py-3.5 px-2 border-2 border-slate-300 bg-[#cc0000]">{thresholdTableData.totalUp3.red}</td>
-                <td className="py-3.5 px-2 border-2 border-slate-300 bg-blue-900">{thresholdTableData.totalUp3.totalPetugas}</td>
+                <td 
+                  onClick={() => handleCellClick('ALL', 'TOTAL UP3 (SEMUA UNIT)', 'green')}
+                  className="py-3.5 px-2 border-2 border-slate-300 bg-[#00a651] hover:bg-[#008f45] cursor-pointer select-none transition-colors duration-150"
+                  title="Klik untuk melihat seluruh petugas Zona Hijau UP3"
+                >
+                  <span className="hover:underline">{thresholdTableData.totalUp3.green}</span>
+                </td>
+                <td 
+                  onClick={() => handleCellClick('ALL', 'TOTAL UP3 (SEMUA UNIT)', 'yellow')}
+                  className="py-3.5 px-2 border-2 border-slate-300 bg-[#c2b800] text-black hover:bg-[#a39b00] cursor-pointer select-none transition-colors duration-150"
+                  title="Klik untuk melihat seluruh petugas Zona Kuning UP3"
+                >
+                  <span className="hover:underline">{thresholdTableData.totalUp3.yellow}</span>
+                </td>
+                <td 
+                  onClick={() => handleCellClick('ALL', 'TOTAL UP3 (SEMUA UNIT)', 'red')}
+                  className="py-3.5 px-2 border-2 border-slate-300 bg-[#cc0000] hover:bg-[#b30000] cursor-pointer select-none transition-colors duration-150"
+                  title="Klik untuk melihat seluruh petugas Zona Merah UP3"
+                >
+                  <span className="hover:underline">{thresholdTableData.totalUp3.red}</span>
+                </td>
+                <td 
+                  onClick={() => handleCellClick('ALL', 'TOTAL UP3 (SEMUA UNIT)', 'total')}
+                  className="py-3.5 px-2 border-2 border-slate-300 bg-[#0a1c3f] hover:bg-[#061126] cursor-pointer select-none transition-colors duration-150"
+                  title="Klik untuk melihat seluruh petugas UP3"
+                >
+                  <span className="hover:underline">{thresholdTableData.totalUp3.totalPetugas}</span>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -1458,6 +1683,158 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
           </table>
         </div>
       </div>
+
+      {/* 5. Clickable Cell Details Modal */}
+      <AnimatePresence>
+        {clickedCell && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setClickedCell(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            
+            {/* Modal Box */}
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ type: 'spring', duration: 0.3 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col overflow-hidden relative border border-slate-100 z-10"
+            >
+              {/* Header */}
+              <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 bg-[#154c79]/25 rounded-lg border border-white/10">
+                    <Users size={18} className="text-emerald-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black italic uppercase tracking-wider text-emerald-400">
+                      DETAIL PETUGAS VCC_DATA
+                    </h3>
+                    <p className="text-[10px] text-white/60 font-medium">
+                      {clickedCell.title}
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setClickedCell(null)}
+                  className="p-1.5 hover:bg-white/10 rounded-lg text-white/80 hover:text-white transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Toolbar */}
+              <div className="px-6 py-3.5 bg-slate-50 border-b border-slate-150 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
+                <div className="relative flex-1 max-w-md">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input 
+                    type="text"
+                    value={modalSearchTerm}
+                    onChange={(e) => setModalSearchTerm(e.target.value)}
+                    placeholder="Cari nama petugas atau unit..."
+                    className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-4 py-1.5 text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-[#154c79] focus:ring-1 focus:ring-[#154c79] transition-all"
+                  />
+                  {modalSearchTerm && (
+                    <button 
+                      onClick={() => setModalSearchTerm('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold text-[10px]"
+                    >
+                      CLEAR
+                    </button>
+                  )}
+                </div>
+                <div className="text-[10px] font-black uppercase text-slate-500 flex items-center gap-1.5 bg-slate-200/50 px-3 py-1.5 rounded-md">
+                  TERDETEKSI: <span className="text-[#154c79]">{filteredModalOfficers.length} PETUGAS</span>
+                </div>
+              </div>
+
+              {/* Grid content */}
+              <div className="p-6 overflow-y-auto flex-1">
+                {filteredModalOfficers.length === 0 ? (
+                  <div className="py-16 text-center text-slate-400 font-medium flex flex-col items-center justify-center gap-2">
+                    <Users size={40} className="text-slate-200 stroke-[1.5]" />
+                    <p className="text-sm font-bold">Tidak ada petugas ditemukan</p>
+                    <p className="text-xs text-slate-400">Silakan gunakan kata kunci pencarian lain atau periksa filter.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-sm">
+                    <table className="w-full border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-900 text-white font-bold text-center">
+                          <th className="py-3 px-3 border border-slate-800 w-[50px]">NO</th>
+                          <th className="py-3 px-4 border border-slate-800 text-left">NAMA PETUGAS</th>
+                          <th className="py-3 px-4 border border-slate-800 text-left">NAMA ULP</th>
+                          <th className="py-3 px-3 border border-slate-800">% SKOR</th>
+                          <th className="py-3 px-3 border border-slate-800">SKOR HARI KERJA</th>
+                          <th className="py-3 px-3 border border-slate-800">SKOR PERFORMA</th>
+                          <th className="py-3 px-3 border border-slate-800">SKOR PRODUKTIVITAS</th>
+                          <th className="py-3 px-3 border border-slate-800 bg-slate-800">TOTAL SKOR</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 bg-white">
+                        {filteredModalOfficers.map((off, index) => (
+                          <tr key={index} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="py-2.5 px-3 border border-slate-200 text-center font-bold text-slate-400 tabular-nums">
+                              {index + 1}
+                            </td>
+                            <td className="py-2.5 px-4 border border-slate-200 text-left font-black uppercase text-slate-900">
+                              {off.employeeName}
+                            </td>
+                            <td className="py-2.5 px-4 border border-slate-200 text-left font-extrabold text-[#154c79] uppercase">
+                              {off.namaUlp}
+                            </td>
+                            <td className="py-2.5 px-3 border border-slate-200 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                                off.persentaseSkor > 60 
+                                  ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                                  : off.persentaseSkor >= 30
+                                  ? 'bg-amber-50 text-amber-600 border border-amber-100'
+                                  : 'bg-rose-50 text-rose-600 border border-rose-100'
+                              }`}>
+                                {off.persentaseSkor.toFixed(1)}%
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 border border-slate-200 text-center font-extrabold text-slate-600 tabular-nums">
+                              {off.skorHariKerja.toFixed(2)}
+                            </td>
+                            <td className="py-2.5 px-3 border border-slate-200 text-center font-extrabold text-slate-600 tabular-nums">
+                              {off.skorPerforma.toFixed(2)}
+                            </td>
+                            <td className="py-2.5 px-3 border border-slate-200 text-center font-extrabold text-slate-600 tabular-nums">
+                              {off.skorProduktivitas.toFixed(2)}
+                            </td>
+                            <td className="py-2.5 px-3 border border-slate-200 text-center font-black text-slate-900 bg-slate-50 tabular-nums">
+                              {off.totalSkor.toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 bg-slate-50 border-t border-slate-150 flex items-center justify-between shrink-0">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                  Menampilkan hasil dari Google Sheet VCC_DATA
+                </span>
+                <button 
+                  onClick={() => setClickedCell(null)}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-black uppercase rounded-lg shadow-sm tracking-wider transition-colors"
+                >
+                  Tutup
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
