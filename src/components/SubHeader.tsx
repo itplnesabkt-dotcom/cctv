@@ -21,6 +21,8 @@ interface SubHeaderProps {
   onStartDateChange: (date: string) => void;
   onEndDateChange: (date: string) => void;
   activeTab: 'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING' | 'YANTEK_OPTIMITATION' | 'ADMIN';
+  selectedMonth?: string;
+  onMonthChange?: (month: string) => void;
 }
 
 export const SubHeader: React.FC<SubHeaderProps> = ({ 
@@ -33,7 +35,9 @@ export const SubHeader: React.FC<SubHeaderProps> = ({
   endDate,
   onStartDateChange,
   onEndDateChange,
-  activeTab
+  activeTab,
+  selectedMonth,
+  onMonthChange
 }) => {
   return (
     <div className="bg-white border-b border-gray-200 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
@@ -128,26 +132,38 @@ export const SubHeader: React.FC<SubHeaderProps> = ({
             <Filter size={16} />
           </div>
           
-          <div className="flex items-center gap-3">
+          {activeTab === 'YANTEK_OPTIMITATION' ? (
             <div className="flex items-center gap-2">
-              <span className="text-[9px] font-black text-gray-400 uppercase">MULAI:</span>
+              <span className="text-[9px] font-black text-gray-400 uppercase">PILIH BULAN:</span>
               <input 
-                type="date" 
-                value={startDate}
-                onChange={(e) => onStartDateChange(e.target.value)}
+                type="month" 
+                value={selectedMonth || ""}
+                onChange={(e) => onMonthChange?.(e.target.value)}
                 className="bg-white border border-gray-200 rounded px-2 py-1 text-[10px] font-bold text-brand-primary outline-none focus:border-brand-secondary transition-colors"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] font-black text-gray-400 uppercase">AKHIR:</span>
-              <input 
-                type="date" 
-                value={endDate}
-                onChange={(e) => onEndDateChange(e.target.value)}
-                className="bg-white border border-gray-200 rounded px-2 py-1 text-[10px] font-bold text-brand-primary outline-none focus:border-brand-secondary transition-colors"
-              />
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-black text-gray-400 uppercase">MULAI:</span>
+                <input 
+                  type="date" 
+                  value={startDate}
+                  onChange={(e) => onStartDateChange(e.target.value)}
+                  className="bg-white border border-gray-200 rounded px-2 py-1 text-[10px] font-bold text-brand-primary outline-none focus:border-brand-secondary transition-colors"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-black text-gray-400 uppercase">AKHIR:</span>
+                <input 
+                  type="date" 
+                  value={endDate}
+                  onChange={(e) => onEndDateChange(e.target.value)}
+                  className="bg-white border border-gray-200 rounded px-2 py-1 text-[10px] font-bold text-brand-primary outline-none focus:border-brand-secondary transition-colors"
+                />
+              </div>
             </div>
-          </div>
+          )}
           
           <div className="h-6 w-px bg-gray-200" />
           

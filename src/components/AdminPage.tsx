@@ -926,7 +926,10 @@ function otorisasiIzinDrive() {
       headers = rawRows[0] || [];
       const findIndex = (targets: string[]) => {
         for (const t of targets) {
-          const idx = headers.findIndex(h => String(h || "").trim().toLowerCase() === t.toLowerCase());
+          const idx = headers.findIndex(h => {
+            const cleaned = String(h || "").replace(/['"]/g, "").trim().toLowerCase();
+            return cleaned === t.toLowerCase();
+          });
           if (idx !== -1) return idx;
         }
         return -1;
@@ -990,8 +993,8 @@ function otorisasiIzinDrive() {
 
         const pctYo = (totalSkor / 15) * 100;
         
-        // Filter: % PENCAPAIAN KINERJA YO kecil dari pada 75%
-        if (pctYo < 75 && totalSkor > 0) {
+        // Filter: % PENCAPAIAN KINERJA YO kecil dari pada 60%
+        if (pctYo < 60 && totalSkor > 0) {
           list.push({
             name,
             ulp: cleanUlp || "ULP BUKITTINGGI",
@@ -1006,10 +1009,10 @@ function otorisasiIzinDrive() {
     // Fallback if no real rows or list is empty
     if (list.length === 0) {
       const fallbackList = [
-        { name: "ABADI RAHMAD", ulp: "ULP LUBUK SIKAPING", targetScore: 15, score: 11.00, percent: 73.33 },
-        { name: "ABDUL HAMID", ulp: "ULP LUBUK BASUNG", targetScore: 15, score: 10.00, percent: 66.67 },
-        { name: "AHMAD SALIM", ulp: "ULP KOTO TUO", targetScore: 15, score: 9.50, percent: 63.33 },
-        { name: "ADE ANDRI", ulp: "ULP SIMPANG EMPAT", targetScore: 15, score: 11.20, percent: 74.67 },
+        { name: "ABADI RAHMAD", ulp: "ULP LUBUK SIKAPING", targetScore: 15, score: 8.00, percent: 53.33 },
+        { name: "ABDUL HAMID", ulp: "ULP LUBUK BASUNG", targetScore: 15, score: 7.00, percent: 46.67 },
+        { name: "AHMAD SALIM", ulp: "ULP KOTO TUO", targetScore: 15, score: 8.50, percent: 56.67 },
+        { name: "ADE ANDRI", ulp: "ULP SIMPANG EMPAT", targetScore: 15, score: 6.00, percent: 40.00 },
         { name: "BUDI SANTOSO", ulp: "ULP BUKITTINGGI", targetScore: 15, score: 8.00, percent: 53.33 },
       ];
       list = fallbackList;
@@ -1309,7 +1312,7 @@ function otorisasiIzinDrive() {
               : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200'
           }`}
         >
-          🔴 TINDAK LANJUT PETUGAS TERBAWAH {"<75%"} ({bottomOfficers.length})
+          🔴 TINDAK LANJUT PETUGAS TERBAWAH {"<60%"} ({bottomOfficers.length})
         </button>
       </div>
 
@@ -1326,7 +1329,7 @@ function otorisasiIzinDrive() {
             <p className="text-[9px] text-slate-300 font-bold uppercase mt-0.5 opacity-80">
               {adminSubTab === 'ANOMALI' 
                 ? `Total Temuan Kasus Terbaca: ${filteredRows.length} Anomali` 
-                : `Total Petugas Performa di Bawah Target (<75%): ${filteredRows.length} Orang`}
+                : `Total Petugas Performa di Bawah Target (<60%): ${filteredRows.length} Orang`}
             </p>
           </div>
 

@@ -43,10 +43,96 @@ import { motion, AnimatePresence } from 'motion/react';
 interface YantekOptimitationPageProps {
   data: DashboardData;
   onDetailClick?: (type: 'WO' | 'PO', identifier: string, isUlp: boolean, isCctv: boolean) => void;
+  selectedMonth?: string;
 }
 
-export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ data, onDetailClick }) => {
+export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ data, onDetailClick, selectedMonth }) => {
   const [selectedUlp, setSelectedUlp] = useState<string>('ALL');
+
+  // Filter VCC_DATA by selectedMonth based on "Tgl Lapor" column
+  const filteredVccData = useMemo(() => {
+    const rawRows = data.vccData || [];
+    if (rawRows.length <= 1) return rawRows;
+    if (!selectedMonth) return rawRows;
+
+    const headers = rawRows[0] || [];
+    const idxTglLapor = headers.findIndex(h => {
+      const s = String(h || "").replace(/['"]/g, "").trim().toLowerCase();
+      return (
+        s === "tgl lapor" || 
+        s === "tgllapor" || 
+        s === "tanggal lapor" || 
+        s === "tanggal_lapor" || 
+        s === "tgl_lapor" || 
+        s === "tgl" || 
+        s === "date" || 
+        s === "tanggal"
+      );
+    });
+
+    if (idxTglLapor === -1) {
+      console.warn("Column 'Tgl Lapor' not found in VCC_DATA headers:", headers);
+      return rawRows;
+    }
+
+    const INDO_MONTHS = [
+      "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+      "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+    ];
+
+    const parts = selectedMonth.split('-');
+    const targetYear = parseInt(parts[0], 10);
+    const targetMonth = parseInt(parts[1], 10);
+    if (isNaN(targetYear) || isNaN(targetMonth) || targetMonth < 1 || targetMonth > 12) {
+      return rawRows;
+    }
+
+    const targetMonthYearString = `${INDO_MONTHS[targetMonth - 1]} ${targetYear}`.toLowerCase().trim();
+
+    const filtered = [headers];
+
+    for (let i = 1; i < rawRows.length; i++) {
+      const row = rawRows[i];
+      if (!row || row.length === 0) continue;
+      const tglRaw = String(row[idxTglLapor] || "").replace(/['"]/g, "").trim();
+      if (!tglRaw) continue;
+
+      let rowMonthYearString = "";
+      
+      // Match DD/MM/YYYY or YYYY-MM-DD
+      const matchSlash = tglRaw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+      const matchDash = tglRaw.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+
+      if (matchSlash) {
+        // Under mm/dd/yyyy, the first group is mm (month), and third group is yyyy (year)
+        const monthNum = parseInt(matchSlash[1], 10);
+        const yearNum = parseInt(matchSlash[3], 10);
+        if (monthNum >= 1 && monthNum <= 12) {
+          rowMonthYearString = `${INDO_MONTHS[monthNum - 1]} ${yearNum}`.toLowerCase().trim();
+        }
+      } else if (matchDash) {
+        // Under yyyy-mm-dd, the second group is mm (month), and first group is yyyy (year)
+        const yearNum = parseInt(matchDash[1], 10);
+        const monthNum = parseInt(matchDash[2], 10);
+        if (monthNum >= 1 && monthNum <= 12) {
+          rowMonthYearString = `${INDO_MONTHS[monthNum - 1]} ${yearNum}`.toLowerCase().trim();
+        }
+      } else {
+        const parsed = new Date(tglRaw);
+        if (!isNaN(parsed.getTime())) {
+          const yearNum = parsed.getFullYear();
+          const monthNum = parsed.getMonth() + 1;
+          rowMonthYearString = `${INDO_MONTHS[monthNum - 1]} ${yearNum}`.toLowerCase().trim();
+        }
+      }
+
+      if (rowMonthYearString === targetMonthYearString) {
+        filtered.push(row);
+      }
+    }
+
+    return filtered;
+  }, [data.vccData, selectedMonth]);
 
   // Eviden Map state loaded from localStorage
   const [evidenMap, setEvidenMap] = useState<any>(() => {
@@ -344,7 +430,18 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
 
   // Process and parse VCC_DATA for dynamic UP3 performance indicators
   const vccMetrics = useMemo(() => {
-    const rawRows = data.vccData || [];
+    const rawRows = filteredVccData;
+    const isFilteredButEmpty = selectedMonth && data.vccData && data.vccData.length > 1 && rawRows.length <= 1;
+
+    if (isFilteredButEmpty) {
+      return {
+        avgPerforma: 0,
+        avgKinerjaYo: 0,
+        avgHariKerja: 0,
+        totalWoPo: 0
+      };
+    }
+
     if (rawRows.length <= 1) {
       // High-fidelity fallback / mock generator matching real formulas
       const defaults = {
@@ -374,7 +471,11 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
 
     const headers = rawRows[0] || [];
     const findIndex = (targets: string[]) => {
-      return headers.findIndex(h => targets.includes(String(h || "").trim()));
+      const lowerTargets = targets.map(t => t.toLowerCase().trim().replace(/['"]/g, ""));
+      return headers.findIndex(h => {
+        const cleaned = String(h || "").toLowerCase().trim().replace(/['"]/g, "");
+        return lowerTargets.includes(cleaned);
+      });
     };
 
     const idxNamaUlp = findIndex(["Nama Ulp", "Nama ULP", "Ulp", "ULP"]);
@@ -506,11 +607,17 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
       avgHariKerja: parseFloat(avgHariKerja.toFixed(2)),
       totalWoPo: parseFloat(totalWoPo.toFixed(2))
     };
-  }, [data.vccData, selectedUlp]);
+  }, [filteredVccData, selectedUlp]);
 
   // Hook to process and parse ULP-specific performance data from VCC_DATA sheet
   const ulpPerformanceData = useMemo(() => {
-    const rawRows = data.vccData || [];
+    const rawRows = filteredVccData;
+    const isFilteredButEmpty = selectedMonth && data.vccData && data.vccData.length > 1 && rawRows.length <= 1;
+
+    if (isFilteredButEmpty) {
+      return [];
+    }
+
     if (rawRows.length <= 1) {
       // High-fidelity fallback metrics per ULP
       const mockUlpList = [
@@ -529,7 +636,11 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
 
     const headers = rawRows[0] || [];
     const findIndex = (targets: string[]) => {
-      return headers.findIndex(h => targets.includes(String(h || "").trim()));
+      const lowerTargets = targets.map(t => t.toLowerCase().trim().replace(/['"]/g, ""));
+      return headers.findIndex(h => {
+        const cleaned = String(h || "").toLowerCase().trim().replace(/['"]/g, "");
+        return lowerTargets.includes(cleaned);
+      });
     };
 
     const idxNamaUlp = findIndex(["Nama Ulp", "Nama ULP", "Ulp", "ULP"]);
@@ -667,12 +778,13 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
     }
 
     return list;
-  }, [data.vccData, selectedUlp]);
+  }, [filteredVccData, selectedUlp]);
 
-  // Hook to process bottom performing officers under 75%
+  // Hook to process bottom performing officers under 60%
   const bottomOfficers = useMemo(() => {
-    const rawRows = data.vccData || [];
+    const rawRows = filteredVccData;
     const hasRealRows = rawRows.length > 1;
+    const isFilteredButEmpty = selectedMonth && data.vccData && data.vccData.length > 1 && rawRows.length <= 1;
 
     let headers: string[] = [];
     let idxNamaPetugas = -1;
@@ -684,7 +796,10 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
       headers = rawRows[0] || [];
       const findIndex = (targets: string[]) => {
         for (const t of targets) {
-          const idx = headers.findIndex(h => String(h || "").trim().toLowerCase() === t.toLowerCase());
+          const idx = headers.findIndex(h => {
+            const cleaned = String(h || "").replace(/['"]/g, "").trim().toLowerCase();
+            return cleaned === t.toLowerCase();
+          });
           if (idx !== -1) return idx;
         }
         return -1;
@@ -748,8 +863,8 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
 
         const pctYo = (totalSkor / 15) * 100;
         
-        // Filter: % PENCAPAIAN KINERJA YO kecil dari pada 75%
-        if (pctYo < 75 && totalSkor > 0) {
+        // Filter: % PENCAPAIAN KINERJA YO kecil dari pada 60%
+        if (pctYo < 60 && totalSkor > 0) {
           list.push({
             name,
             ulp: cleanUlp || "ULP BUKITTINGGI",
@@ -762,12 +877,12 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
     }
 
     // Fallback if no real rows or list is empty
-    if (list.length === 0) {
+    if (list.length === 0 && !isFilteredButEmpty) {
       const fallbackList = [
-        { name: "ABADI RAHMAD", ulp: "ULP LUBUK SIKAPING", targetScore: 15, score: 11.00, percent: 73.33 },
-        { name: "ABDUL HAMID", ulp: "ULP LUBUK BASUNG", targetScore: 15, score: 10.00, percent: 66.67 },
-        { name: "AHMAD SALIM", ulp: "ULP KOTO TUO", targetScore: 15, score: 9.50, percent: 63.33 },
-        { name: "ADE ANDRI", ulp: "ULP SIMPANG EMPAT", targetScore: 15, score: 11.20, percent: 74.67 },
+        { name: "ABADI RAHMAD", ulp: "ULP LUBUK SIKAPING", targetScore: 15, score: 8.00, percent: 53.33 },
+        { name: "ABDUL HAMID", ulp: "ULP LUBUK BASUNG", targetScore: 15, score: 7.00, percent: 46.67 },
+        { name: "AHMAD SALIM", ulp: "ULP KOTO TUO", targetScore: 15, score: 8.50, percent: 56.67 },
+        { name: "ADE ANDRI", ulp: "ULP SIMPANG EMPAT", targetScore: 15, score: 6.00, percent: 40.00 },
         { name: "BUDI SANTOSO", ulp: "ULP BUKITTINGGI", targetScore: 15, score: 8.00, percent: 53.33 },
       ];
       list = fallbackList;
@@ -781,7 +896,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
 
     list.sort((a, b) => a.percent - b.percent);
     return list;
-  }, [data.vccData, selectedUlp]);
+  }, [filteredVccData, selectedUlp]);
 
   // Hook to calculate THRESHOLD NILAI YO table data matching the image
   const thresholdTableData = useMemo(() => {
@@ -795,8 +910,9 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
       { key: "PADANG PANJANG", name: "ULP PADANG PANJANG", up3: "BUKITTINGGI", fallbackReal: 98.29, fallbackGreen: 19 },
     ];
 
-    const rawRows = data.vccData || [];
+    const rawRows = filteredVccData;
     const hasRealRows = rawRows.length > 1;
+    const isFilteredButEmpty = selectedMonth && data.vccData && data.vccData.length > 1 && rawRows.length <= 1;
 
     let headers: string[] = [];
     let idxNamaUlp = -1;
@@ -806,7 +922,11 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
     if (hasRealRows) {
       headers = rawRows[0] || [];
       const findIndex = (targets: string[]) => {
-        return headers.findIndex(h => targets.includes(String(h || "").trim()));
+        const lowerTargets = targets.map(t => t.toLowerCase().trim().replace(/['"]/g, ""));
+        return headers.findIndex(h => {
+          const cleaned = String(h || "").toLowerCase().trim().replace(/['"]/g, "");
+          return lowerTargets.includes(cleaned);
+        });
       };
       idxNamaUlp = findIndex(["Nama Ulp", "Nama ULP", "Ulp", "ULP"]);
       idxTotalSkor = findIndex(["Total Skor", "Skor Total"]);
@@ -849,7 +969,9 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
     const rowsList = standardUlps.map((u) => {
       let realRate = u.fallbackReal;
 
-      if (hasRealRows) {
+      if (isFilteredButEmpty) {
+        realRate = 0;
+      } else if (hasRealRows) {
         let sumTotalSkor = 0;
         let countTotalSkor = 0;
 
@@ -884,7 +1006,12 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
         return oUlp.includes(u.key) || u.key.includes(oUlp);
       });
 
-      if (officersForUlp.length > 0) {
+      if (isFilteredButEmpty) {
+        greenCount = 0;
+        yellowCount = 0;
+        redCount = 0;
+        totalPetugas = 0;
+      } else if (officersForUlp.length > 0) {
         officersForUlp.forEach(o => {
           const woVal = parseFloat(o.persenWo) || 0;
           const poVal = parseFloat(o.persenPo) || 0;
@@ -927,7 +1054,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
 
     const averageRealRate = rowsList.length > 0 
       ? rowsList.reduce((acc, r) => acc + r.realRate, 0) / rowsList.length 
-      : 95.76;
+      : (isFilteredButEmpty ? 0 : 95.76);
 
     const totalGreen = rowsList.reduce((acc, r) => acc + r.green, 0);
     const totalYellow = rowsList.reduce((acc, r) => acc + r.yellow, 0);
@@ -945,7 +1072,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
         totalPetugas: grandTotalPetugas
       }
     };
-  }, [data.vccData, data.officerPerformance, selectedUlp]);
+  }, [filteredVccData, data.officerPerformance, selectedUlp]);
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-[#0a1128]/5 rounded-2xl min-h-full border border-gray-100">
@@ -1204,7 +1331,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Award className="text-rose-500" size={18} />
-            <h3 className="text-sm font-black italic tracking-tighter text-brand-primary uppercase">TINDAK LANJUT EVALUASI PETUGAS (PERFORMA {"<75%"})</h3>
+            <h3 className="text-sm font-black italic tracking-tighter text-brand-primary uppercase">TINDAK LANJUT EVALUASI PETUGAS (PERFORMA {"<60%"})</h3>
           </div>
           <span className="px-3 py-1 bg-rose-50 text-rose-600 border border-rose-150 rounded-full text-[9px] font-black uppercase">
             Terdeteksi: {bottomOfficers.length} Orang
@@ -1229,7 +1356,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
               {bottomOfficers.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400 bg-slate-50 font-black uppercase tracking-wider border-2 border-slate-300">
-                    Tidak ada petugas dengan pencapaian kinerja di bawah 75%
+                    Tidak ada petugas dengan pencapaian kinerja di bawah 60%
                   </td>
                 </tr>
               ) : (

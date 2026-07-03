@@ -26,10 +26,36 @@ export default function App() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [activeTab, setActiveTab] = useState<'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING' | 'YANTEK_OPTIMITATION' | 'ADMIN'>('CCTV');
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
+  });
+
+  const handleMonthChange = (monthStr: string) => {
+    setSelectedMonth(monthStr);
+    if (monthStr) {
+      const [year, month] = monthStr.split('-');
+      const y = parseInt(year, 10);
+      const m = parseInt(month, 10);
+      if (!isNaN(y) && !isNaN(m)) {
+        const firstDay = `${year}-${month}-01`;
+        const lastDayObj = new Date(y, m, 0);
+        const lastDayDate = String(lastDayObj.getDate()).padStart(2, '0');
+        const lastDay = `${year}-${month}-${lastDayDate}`;
+        setStartDate(firstDay);
+        setEndDate(lastDay);
+      }
+    }
+  };
   
   // Clear filter when changing tabs since the filter source (ULP vs Posko) changes
   useEffect(() => {
     setSelectedUlp("");
+    if (activeTab === 'YANTEK_OPTIMITATION') {
+      handleMonthChange(selectedMonth);
+    }
   }, [activeTab]);
 
   const formatDateForQuery = (date: Date) => {
@@ -340,6 +366,8 @@ export default function App() {
         onStartDateChange={setStartDate}
         onEndDateChange={setEndDate}
         activeTab={activeTab}
+        selectedMonth={selectedMonth}
+        onMonthChange={handleMonthChange}
       />
       
       <main className="flex-1 p-6 flex flex-col gap-6 overflow-x-hidden">
@@ -405,6 +433,7 @@ export default function App() {
               <YantekOptimitationPage 
                 data={filteredData || data} 
                 onDetailClick={handleDetailClick}
+                selectedMonth={selectedMonth}
               />
             ) : (
               <AdminPage anomaliList={data.anomali.anomaliList} vccData={data.vccData} />
