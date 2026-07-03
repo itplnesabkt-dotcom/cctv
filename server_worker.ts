@@ -18,7 +18,7 @@ export default {
       });
     }
 
-    // 2. Route: /api/sheets
+    // 2. Route: /api/sheets with robust retry logic
     if (url.pathname === "/api/sheets") {
       const sheetName = url.searchParams.get("sheetName");
       const customUrl = url.searchParams.get("customUrl");
@@ -39,44 +39,54 @@ export default {
         });
       }
 
-      try {
+      const maxAttempts = 3;
+      let lastError: any = null;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 seconds timeout per attempt
 
-        const response = await fetch(targetUrl, {
-          signal: controller.signal,
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-          }
-        });
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          return new Response(JSON.stringify({ error: `Backend fetch failed with HTTP ${response.status}` }), {
-            status: response.status,
-            headers: { 
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*"
-            },
+        try {
+          const response = await fetch(targetUrl, {
+            signal: controller.signal,
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
           });
+          clearTimeout(timeoutId);
+
+          if (response.ok) {
+            const csvText = await response.text();
+            return new Response(csvText, {
+              headers: {
+                "Content-Type": "text/csv; charset=utf-8",
+                "Access-Control-Allow-Origin": "*",
+              },
+            });
+          } else {
+            lastError = new Error(`HTTP status ${response.status}`);
+            console.warn(`Attempt ${attempt} failed fetching sheets with HTTP ${response.status}. Retrying...`);
+          }
+        } catch (err: any) {
+          clearTimeout(timeoutId);
+          lastError = err;
+          console.warn(`Attempt ${attempt} failed with error: ${err.message || err}. Retrying...`);
         }
 
-        const csvText = await response.text();
-        return new Response(csvText, {
-          headers: {
-            "Content-Type": "text/csv; charset=utf-8",
-            "Access-Control-Allow-Origin": "*",
-          },
-        });
-      } catch (err: any) {
-        return new Response(JSON.stringify({ error: err.message || "Internal server error fetching sheets" }), {
-          status: 500,
-          headers: { 
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*"
-          },
-        });
+        // Brief backoff before retry
+        if (attempt < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
+
+      console.error("All sheet fetch attempts failed. Last error:", lastError);
+      return new Response(JSON.stringify({ error: lastError?.message || "Internal server error fetching sheets after multiple attempts" }), {
+        status: 500,
+        headers: { 
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*"
+        },
+      });
     }
 
     // 2.5 Route: /api/gas-proxy

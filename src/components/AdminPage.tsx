@@ -985,21 +985,27 @@ function otorisasiIzinDrive() {
         }
 
         let totalSkor = 0;
+        let pctYo = 0;
+
+        if (idxPersentaseSkor !== -1) {
+          pctYo = parseNum(row[idxPersentaseSkor]);
+        }
         if (idxTotalSkor !== -1) {
           totalSkor = parseNum(row[idxTotalSkor]);
-        } else if (idxPersentaseSkor !== -1) {
-          totalSkor = parseNum(row[idxPersentaseSkor]);
         }
 
-        const pctYo = (totalSkor / 15) * 100;
+        // Fallbacks if percentage is missing
+        if (idxPersentaseSkor === -1 && idxTotalSkor !== -1) {
+          pctYo = (totalSkor / 15) * 100;
+        }
         
         // Filter: % PENCAPAIAN KINERJA YO kecil dari pada 60%
-        if (pctYo < 60 && totalSkor > 0) {
+        if (pctYo < 60 && pctYo > 0) {
           list.push({
             name,
             ulp: cleanUlp || "ULP BUKITTINGGI",
             targetScore: 15,
-            score: parseFloat(totalSkor.toFixed(2)),
+            score: totalSkor,
             percent: parseFloat(pctYo.toFixed(2))
           });
         }
@@ -1007,7 +1013,7 @@ function otorisasiIzinDrive() {
     }
 
     // Fallback if no real rows or list is empty
-    if (list.length === 0) {
+    if (!hasRealRows && list.length === 0) {
       const fallbackList = [
         { name: "ABADI RAHMAD", ulp: "ULP LUBUK SIKAPING", targetScore: 15, score: 8.00, percent: 53.33 },
         { name: "ABDUL HAMID", ulp: "ULP LUBUK BASUNG", targetScore: 15, score: 7.00, percent: 46.67 },

@@ -855,21 +855,27 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
         }
 
         let totalSkor = 0;
+        let pctYo = 0;
+
+        if (idxPersentaseSkor !== -1) {
+          pctYo = parseNum(row[idxPersentaseSkor]);
+        }
         if (idxTotalSkor !== -1) {
           totalSkor = parseNum(row[idxTotalSkor]);
-        } else if (idxPersentaseSkor !== -1) {
-          totalSkor = parseNum(row[idxPersentaseSkor]);
         }
 
-        const pctYo = (totalSkor / 15) * 100;
+        // Fallbacks if percentage is missing
+        if (idxPersentaseSkor === -1 && idxTotalSkor !== -1) {
+          pctYo = (totalSkor / 15) * 100;
+        }
         
         // Filter: % PENCAPAIAN KINERJA YO kecil dari pada 60%
-        if (pctYo < 60 && totalSkor > 0) {
+        if (pctYo < 60 && pctYo > 0) {
           list.push({
             name,
             ulp: cleanUlp || "ULP BUKITTINGGI",
             targetScore: 15,
-            score: parseFloat(totalSkor.toFixed(2)),
+            score: totalSkor,
             percent: parseFloat(pctYo.toFixed(2))
           });
         }
@@ -877,7 +883,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
     }
 
     // Fallback if no real rows or list is empty
-    if (list.length === 0 && !isFilteredButEmpty) {
+    if (!hasRealRows && list.length === 0 && !isFilteredButEmpty) {
       const fallbackList = [
         { name: "ABADI RAHMAD", ulp: "ULP LUBUK SIKAPING", targetScore: 15, score: 8.00, percent: 53.33 },
         { name: "ABDUL HAMID", ulp: "ULP LUBUK BASUNG", targetScore: 15, score: 7.00, percent: 46.67 },
@@ -1385,7 +1391,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
                       <td className="py-3.5 px-3 border border-slate-300 text-center font-extrabold text-slate-400 tabular-nums">{runningNo}</td>
                       <td className="py-3.5 px-4 border border-slate-300 text-left font-black uppercase text-slate-900">{name}</td>
                       <td className="py-3.5 px-4 border border-slate-300 text-left font-extrabold text-[#1b3d5d] uppercase">{ulp}</td>
-                      <td className="py-3.5 px-3 border border-slate-300 text-center font-bold text-slate-400">15.00</td>
+                      <td className="py-3.5 px-3 border border-slate-300 text-center font-bold text-slate-400">{targetScore.toFixed(2)}</td>
                       <td className="py-3.5 px-3 border border-slate-300 text-center font-black text-slate-800">{score.toFixed(2)}</td>
                       <td className="py-3.5 px-3 border border-slate-300 text-center bg-rose-50/20">
                         <span className="px-2 py-0.5 rounded text-[10px] font-black text-rose-600 bg-rose-50 border border-rose-100">
