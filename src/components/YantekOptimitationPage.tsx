@@ -1001,31 +1001,38 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
       let redCount = 0;
       let totalPetugas = 0;
 
-      const officersForUlp = (data.officerPerformance || []).filter(o => {
-        const oUlp = String(o.ulp || "").toUpperCase();
-        return oUlp.includes(u.key) || u.key.includes(oUlp);
-      });
-
       if (isFilteredButEmpty) {
         greenCount = 0;
         yellowCount = 0;
         redCount = 0;
         totalPetugas = 0;
-      } else if (officersForUlp.length > 0) {
-        officersForUlp.forEach(o => {
-          const woVal = parseFloat(o.persenWo) || 0;
-          const poVal = parseFloat(o.persenPo) || 0;
-          const totalAvg = (woVal + poVal) / 2;
+      } else if (hasRealRows) {
+        rawRows.slice(1).forEach(row => {
+          if (!row || row.length === 0) return;
+          const rowUlpRaw = idxNamaUlp !== -1 ? String(row[idxNamaUlp] || "").toUpperCase() : "";
+          if (rowUlpRaw.includes(u.key) || u.key.includes(rowUlpRaw)) {
+            let val = 0;
+            if (idxTotalSkor !== -1) {
+              val = parseNum(row[idxTotalSkor]);
+            } else if (idxPersentaseSkor !== -1) {
+              val = parseNum(row[idxPersentaseSkor]);
+            }
 
-          if (totalAvg > 60) {
-            greenCount++;
-          } else if (totalAvg >= 30) {
-            yellowCount++;
-          } else {
-            redCount++;
+            // Calculate percentage from total skor. 
+            // Since max Total Skor is 15, we convert it to percentage: (val / 15) * 100.
+            // If the value is already > 15, we can treat it as percentage directly.
+            const pct = val > 15 ? val : (val / 15) * 100;
+
+            if (pct > 60) {
+              greenCount++;
+            } else if (pct >= 30) {
+              yellowCount++;
+            } else {
+              redCount++;
+            }
+            totalPetugas++;
           }
         });
-        totalPetugas = officersForUlp.length;
       } else {
         greenCount = u.fallbackGreen;
         yellowCount = 0;
