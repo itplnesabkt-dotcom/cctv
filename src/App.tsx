@@ -11,6 +11,7 @@ import { DetailModal } from './components/DetailModal.tsx';
 import { OverSLAPage } from './components/OverSLAPage.tsx';
 import { RatingPage } from './components/RatingPage.tsx';
 import { AnomaliPage } from './components/AnomaliPage.tsx';
+import { YantekOptimitationPage } from './components/YantekOptimitationPage.tsx';
 import { AdminPage } from './components/AdminPage.tsx';
 import { GoogleSheetsService } from './services/googleSheetsService.ts';
 import { DashboardData } from './types';
@@ -24,7 +25,7 @@ export default function App() {
   const [selectedUlp, setSelectedUlp] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [activeTab, setActiveTab] = useState<'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING' | 'ADMIN'>('CCTV');
+  const [activeTab, setActiveTab] = useState<'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING' | 'YANTEK_OPTIMITATION' | 'ADMIN'>('CCTV');
   
   // Clear filter when changing tabs since the filter source (ULP vs Posko) changes
   useEffect(() => {
@@ -398,10 +399,15 @@ export default function App() {
                 data={filteredData?.overSla || data.overSla} 
                 onDetailClick={handleOverSLADetailClick}
               />
-            ) : activeTab === 'ADMIN' ? (
-              <AdminPage anomaliList={data.anomali.anomaliList} />
-            ) : (
+            ) : activeTab === 'RATING' ? (
               <RatingPage data={filteredData || data} />
+            ) : activeTab === 'YANTEK_OPTIMITATION' ? (
+              <YantekOptimitationPage 
+                data={filteredData || data} 
+                onDetailClick={handleDetailClick}
+              />
+            ) : (
+              <AdminPage anomaliList={data.anomali.anomaliList} vccData={data.vccData} />
             )}
           </motion.div>
         </AnimatePresence>

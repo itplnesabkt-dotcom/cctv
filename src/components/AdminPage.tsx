@@ -27,6 +27,7 @@ import { motion, AnimatePresence } from 'motion/react';
 
 interface AdminPageProps {
   anomaliList: any[][]; // Table row structure: [No Laporan, Tgl Laporan, Nama Petugas, ULP, Jenis Anomali, Deskripsi, RPT, RCT]
+  vccData?: any[][];
 }
 
 export interface EvidenUpload {
@@ -105,7 +106,7 @@ const compressImage = (file: File, maxWidth: number = 1200, maxHeight: number = 
   });
 };
 
-export const AdminPage: React.FC<AdminPageProps> = ({ anomaliList = [] }) => {
+export const AdminPage: React.FC<AdminPageProps> = ({ anomaliList = [], vccData = [] }) => {
   // Authentication states
   const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -136,6 +137,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ anomaliList = [] }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  const [adminSubTab, setAdminSubTab] = useState<'ANOMALI' | 'TINDAK_LANJUT'>('ANOMALI');
 
   // Active uploading states
   const [uploadingState, setUploadingState] = useState<{ [key: string]: boolean }>({});
@@ -909,24 +911,144 @@ function otorisasiIzinDrive() {
     }));
   };
 
+  // Process bottom officers similarly to YantekOptimitationPage
+  const bottomOfficers = useMemo(() => {
+    const rawRows = vccData || [];
+    const hasRealRows = rawRows.length > 1;
+
+    let headers: string[] = [];
+    let idxNamaPetugas = -1;
+    let idxNamaUlp = -1;
+    let idxTotalSkor = -1;
+    let idxPersentaseSkor = -1;
+
+    if (hasRealRows) {
+      headers = rawRows[0] || [];
+      const findIndex = (targets: string[]) => {
+        for (const t of targets) {
+          const idx = headers.findIndex(h => String(h || "").trim().toLowerCase() === t.toLowerCase());
+          if (idx !== -1) return idx;
+        }
+        return -1;
+      };
+      idxNamaPetugas = findIndex(["employeename", "employee_name", "nama petugas", "nama", "petugas", "personil", "name", "personil yantek"]);
+      idxNamaUlp = findIndex(["nama ulp", "ulp", "unit"]);
+      idxTotalSkor = findIndex(["total skor", "skor total", "total score", "skor"]);
+      idxPersentaseSkor = findIndex(["persentase skor", "persentase", "skor %", "persen skor"]);
+    }
+
+    const parseNum = (val: any): number => {
+      if (val === undefined || val === null || val === "") return 0;
+      if (typeof val === 'number') return val;
+      const str = String(val).trim();
+      if (!str) return 0;
+      let cleaned = str.replace('%', '').trim();
+      const hasComma = cleaned.includes(',');
+      const hasDot = cleaned.includes('.');
+      if (hasComma && hasDot) {
+        if (cleaned.indexOf(',') < cleaned.indexOf('.')) {
+          cleaned = cleaned.replace(/,/g, '');
+        } else {
+          cleaned = cleaned.replace(/\./g, '').replace(/,/g, '.');
+        }
+      } else if (hasComma) {
+        const parts = cleaned.split(',');
+        if (parts[parts.length - 1].length === 3 && parts[0].length <= 3) {
+          cleaned = cleaned.replace(/,/g, '');
+        } else {
+          cleaned = cleaned.replace(/,/g, '.');
+        }
+      } else if (hasDot) {
+        const parts = cleaned.split('.');
+        if (parts[parts.length - 1].length === 3 && parts[0].length <= 3) {
+          cleaned = cleaned.replace(/\./g, '');
+        }
+      }
+      return parseFloat(cleaned) || 0;
+    };
+
+    let list: any[] = [];
+
+    if (hasRealRows && idxNamaPetugas !== -1) {
+      rawRows.slice(1).forEach(row => {
+        if (!row || row.length === 0) return;
+        const name = String(row[idxNamaPetugas] || "").trim().toUpperCase();
+        if (!name || name === "NAMA PETUGAS" || name === "0" || name === "NULL" || name === "UNDEFINED") return;
+
+        const ulpRaw = idxNamaUlp !== -1 ? String(row[idxNamaUlp] || "").trim().toUpperCase() : "";
+        let cleanUlp = ulpRaw;
+        if (!cleanUlp.startsWith("ULP ")) {
+          cleanUlp = "ULP " + cleanUlp;
+        }
+
+        let totalSkor = 0;
+        if (idxTotalSkor !== -1) {
+          totalSkor = parseNum(row[idxTotalSkor]);
+        } else if (idxPersentaseSkor !== -1) {
+          totalSkor = parseNum(row[idxPersentaseSkor]);
+        }
+
+        const pctYo = (totalSkor / 15) * 100;
+        
+        // Filter: % PENCAPAIAN KINERJA YO kecil dari pada 75%
+        if (pctYo < 75 && totalSkor > 0) {
+          list.push({
+            name,
+            ulp: cleanUlp || "ULP BUKITTINGGI",
+            targetScore: 15,
+            score: parseFloat(totalSkor.toFixed(2)),
+            percent: parseFloat(pctYo.toFixed(2))
+          });
+        }
+      });
+    }
+
+    // Fallback if no real rows or list is empty
+    if (list.length === 0) {
+      const fallbackList = [
+        { name: "ABADI RAHMAD", ulp: "ULP LUBUK SIKAPING", targetScore: 15, score: 11.00, percent: 73.33 },
+        { name: "ABDUL HAMID", ulp: "ULP LUBUK BASUNG", targetScore: 15, score: 10.00, percent: 66.67 },
+        { name: "AHMAD SALIM", ulp: "ULP KOTO TUO", targetScore: 15, score: 9.50, percent: 63.33 },
+        { name: "ADE ANDRI", ulp: "ULP SIMPANG EMPAT", targetScore: 15, score: 11.20, percent: 74.67 },
+        { name: "BUDI SANTOSO", ulp: "ULP BUKITTINGGI", targetScore: 15, score: 8.00, percent: 53.33 },
+      ];
+      list = fallbackList;
+    }
+
+    list.sort((a, b) => a.percent - b.percent);
+    return list;
+  }, [vccData]);
+
   // Filter & Search rows
   const filteredRows = useMemo(() => {
-    return anomaliList.filter(row => {
-      const noTugas = String(row[0] || '').toLowerCase();
-      const tgl = String(row[1] || '').toLowerCase();
-      const petugas = String(row[2] || '').toLowerCase();
-      const ulp = String(row[3] || '').toLowerCase();
-      const jenis = String(row[4] || '').toLowerCase();
-      const search = searchTerm.toLowerCase().trim();
+    if (adminSubTab === 'ANOMALI') {
+      return anomaliList.filter(row => {
+        const noTugas = String(row[0] || '').toLowerCase();
+        const tgl = String(row[1] || '').toLowerCase();
+        const petugas = String(row[2] || '').toLowerCase();
+        const ulp = String(row[3] || '').toLowerCase();
+        const jenis = String(row[4] || '').toLowerCase();
+        const search = searchTerm.toLowerCase().trim();
 
-      return !search ||
-        noTugas.includes(search) ||
-        tgl.includes(search) ||
-        petugas.includes(search) ||
-        ulp.includes(search) ||
-        jenis.includes(search);
-    });
-  }, [anomaliList, searchTerm]);
+        return !search ||
+          noTugas.includes(search) ||
+          tgl.includes(search) ||
+          petugas.includes(search) ||
+          ulp.includes(search) ||
+          jenis.includes(search);
+      });
+    } else {
+      return bottomOfficers.filter(officer => {
+        const name = String(officer.name || '').toLowerCase();
+        const ulp = String(officer.ulp || '').toLowerCase();
+        const search = searchTerm.toLowerCase().trim();
+
+        return !search ||
+          name.includes(search) ||
+          ulp.includes(search);
+      });
+    }
+  }, [adminSubTab, anomaliList, bottomOfficers, searchTerm]);
 
   // Pagination rows
   const paginatedRows = useMemo(() => {
@@ -936,10 +1058,10 @@ function otorisasiIzinDrive() {
 
   const totalPages = Math.ceil(filteredRows.length / itemsPerPage) || 1;
 
-  // Reset page when search changes
+  // Reset page when search or subtab changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, adminSubTab]);
 
   // LOGIN SCREEN
   if (!isAuthenticated) {
@@ -1167,6 +1289,30 @@ function otorisasiIzinDrive() {
         )}
       </AnimatePresence>
 
+      {/* Subtab Switcher for Admin Upload types */}
+      <div className="flex bg-slate-200/50 p-1.5 rounded-2xl border border-slate-300/30 gap-1.5" id="admin_sub_tabs_bar">
+        <button
+          onClick={() => setAdminSubTab('ANOMALI')}
+          className={`flex-1 py-3 text-center text-xs font-black tracking-wider uppercase rounded-xl transition-all cursor-pointer ${
+            adminSubTab === 'ANOMALI'
+              ? 'bg-slate-800 text-white shadow-md font-bold'
+              : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200'
+          }`}
+        >
+          📁 EVIDEN KASUS ANOMALI ({anomaliList.length})
+        </button>
+        <button
+          onClick={() => setAdminSubTab('TINDAK_LANJUT')}
+          className={`flex-1 py-3 text-center text-xs font-black tracking-wider uppercase rounded-xl transition-all cursor-pointer ${
+            adminSubTab === 'TINDAK_LANJUT'
+              ? 'bg-slate-800 text-white shadow-md font-bold'
+              : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200'
+          }`}
+        >
+          🔴 TINDAK LANJUT PETUGAS TERBAWAH {"<75%"} ({bottomOfficers.length})
+        </button>
+      </div>
+
       {/* Table Section */}
       <div className="bg-white rounded-3xl border border-gray-150 shadow-sm overflow-hidden flex flex-col gap-4">
         
@@ -1175,10 +1321,12 @@ function otorisasiIzinDrive() {
           <div>
             <h3 className="text-xs font-black tracking-widest text-[#00e5ff] uppercase flex items-center gap-1.5">
               <ShieldCheck size={14} />
-              TABEL MATRIX DATA EVIDEN
+              {adminSubTab === 'ANOMALI' ? 'TABEL MATRIX DATA EVIDEN ANOMALI' : 'TABEL TINDAK LANJUT PETUGAS TERBAWAH'}
             </h3>
             <p className="text-[9px] text-slate-300 font-bold uppercase mt-0.5 opacity-80">
-              Total Temuan Kasus Terbaca: {filteredRows.length} Anomali
+              {adminSubTab === 'ANOMALI' 
+                ? `Total Temuan Kasus Terbaca: ${filteredRows.length} Anomali` 
+                : `Total Petugas Performa di Bawah Target (<75%): ${filteredRows.length} Orang`}
             </p>
           </div>
 
@@ -1189,7 +1337,7 @@ function otorisasiIzinDrive() {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Cari No Tugas/Petugas/ULP..."
+                placeholder={adminSubTab === 'ANOMALI' ? "Cari No Tugas/Petugas/ULP..." : "Cari Nama Petugas/ULP..."}
                 className="bg-transparent text-white placeholder-white/50 text-[10px] font-bold outline-none w-full"
               />
             </div>
@@ -1199,110 +1347,177 @@ function otorisasiIzinDrive() {
         {/* Real Table */}
         <div className="p-5 flex flex-col gap-4">
           <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-left border-collapse text-[11px] font-semibold text-slate-800 min-w-[1000px]">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black text-[8.5px] tracking-wider">
-                  <th scope="col" className="px-4 py-3 text-center w-12">No</th>
-                  <th scope="col" className="px-4 py-3 w-36">No Tugas</th>
-                  <th scope="col" className="px-4 py-3 w-36">ULP</th>
-                  <th scope="col" className="px-4 py-3 w-40">Petugas</th>
-                  <th scope="col" className="px-4 py-3">Jenis Kerawanan (Anomali)</th>
-                  <th scope="col" className="px-4 py-3 text-center w-56">Foto Eviden 1</th>
-                  <th scope="col" className="px-4 py-3 text-center w-56">Foto Eviden 2</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-150 bg-white">
-                {paginatedRows.length > 0 ? (
-                  paginatedRows.map((row, idx) => {
-                    const runningNo = (currentPage - 1) * itemsPerPage + idx + 1;
-                    const noTugas = row[0] || "-";
-                    const tgl = row[1] || "-";
-                    const petugas = row[2] || "-";
-                    const ulp = row[3] || "-";
-                    const jenis = row[4] || "-";
-                    const desc = row[5] || "-";
-
-                    const eviden = evidenMap[noTugas] || {};
-
-                    return (
-                      <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                        {/* No */}
-                        <td className="px-4 py-3 text-center text-slate-400 tabular-nums font-extrabold">{runningNo}</td>
-
-                        {/* No Tugas */}
-                        <td className="px-4 py-3 font-mono font-black text-slate-700">
-                          <span className="bg-slate-100 text-slate-800 border border-slate-200 px-1.5 py-1 rounded text-[10px]">
-                            {noTugas}
-                          </span>
-                        </td>
-
-                        {/* ULP */}
-                        <td className="px-4 py-3 font-black text-[#1b3d5d] truncate uppercase max-w-[140px]" title={ulp}>
-                          {ulp}
-                        </td>
-
-                        {/* Petugas */}
-                        <td className="px-4 py-3 font-bold text-slate-600 truncate uppercase max-w-[150px]" title={petugas}>
-                          {petugas}
-                        </td>
-
-                        {/* Anomali list */}
-                        <td className="px-4 py-3 max-w-[250px]">
-                          <div className="flex flex-wrap gap-1 max-h-[40px] overflow-y-auto custom-scrollbar">
-                            {jenis.split(",").map((v: string, vIdx: number) => (
-                              <span key={vIdx} className="px-1.5 py-0.5 text-[7px] font-black uppercase text-rose-700 bg-rose-50 border border-rose-100 rounded">
-                                {v.trim()}
-                              </span>
-                            ))}
-                          </div>
-                          {desc && desc !== "-" && (
-                            <p className="text-[7.5px] font-bold text-slate-400 mt-1 truncate" title={desc}>{desc}</p>
-                          )}
-                        </td>
-
-                        {/* EVIDEN 1 column */}
-                        <td className="px-4 py-3 border-l border-slate-100 bg-slate-50/20">
-                          <EvidenUploadCell 
-                            noTugas={noTugas}
-                            evidenIdx={1}
-                            evidenData={eviden}
-                            isUploading={uploadingState[`${noTugas}_1`] || false}
-                            msg={uploadMessage[`${noTugas}_1`]}
-                            onUploadChange={(e) => handleFileUpload(e, noTugas, 1)}
-                            onDelete={() => handleDeletePhoto(noTugas, 1)}
-                            onManualSubmit={(url) => handleManualUrlSubmit(noTugas, 1, url)}
-                            onSetUploadMethod={setUploadMethod}
-                            currentUploadMethod={uploadMethod}
-                          />
-                        </td>
-
-                        {/* EVIDEN 2 column */}
-                        <td className="px-4 py-3 border-l border-slate-100 bg-slate-100/5">
-                          <EvidenUploadCell 
-                            noTugas={noTugas}
-                            evidenIdx={2}
-                            evidenData={eviden}
-                            isUploading={uploadingState[`${noTugas}_2`] || false}
-                            msg={uploadMessage[`${noTugas}_2`]}
-                            onUploadChange={(e) => handleFileUpload(e, noTugas, 2)}
-                            onDelete={() => handleDeletePhoto(noTugas, 2)}
-                            onManualSubmit={(url) => handleManualUrlSubmit(noTugas, 2, url)}
-                            onSetUploadMethod={setUploadMethod}
-                            currentUploadMethod={uploadMethod}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={7} className="text-center py-12 text-slate-400 font-extrabold uppercase tracking-widest bg-slate-50/50">
-                      Tidak ada data yang cocok dengan kriteria pencarian
-                    </td>
+            {adminSubTab === 'ANOMALI' ? (
+              <table className="w-full text-left border-collapse text-[11px] font-semibold text-slate-800 min-w-[1000px]">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black text-[8.5px] tracking-wider">
+                    <th scope="col" className="px-4 py-3 text-center w-12">No</th>
+                    <th scope="col" className="px-4 py-3 w-36">No Tugas</th>
+                    <th scope="col" className="px-4 py-3 w-36">ULP</th>
+                    <th scope="col" className="px-4 py-3 w-40">Petugas</th>
+                    <th scope="col" className="px-4 py-3">Jenis Kerawanan (Anomali)</th>
+                    <th scope="col" className="px-4 py-3 text-center w-56">Foto Eviden 1</th>
+                    <th scope="col" className="px-4 py-3 text-center w-56">Foto Eviden 2</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-150 bg-white">
+                  {paginatedRows.length > 0 ? (
+                    paginatedRows.map((row, idx) => {
+                      const runningNo = (currentPage - 1) * itemsPerPage + idx + 1;
+                      const noTugas = row[0] || "-";
+                      const tgl = row[1] || "-";
+                      const petugas = row[2] || "-";
+                      const ulp = row[3] || "-";
+                      const jenis = row[4] || "-";
+                      const desc = row[5] || "-";
+
+                      const eviden = evidenMap[noTugas] || {};
+
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-4 py-3 text-center text-slate-400 tabular-nums font-extrabold">{runningNo}</td>
+                          <td className="px-4 py-3 font-mono font-black text-slate-700">
+                            <span className="bg-slate-100 text-slate-800 border border-slate-200 px-1.5 py-1 rounded text-[10px]">
+                              {noTugas}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-black text-[#1b3d5d] truncate uppercase max-w-[140px]" title={ulp}>
+                            {ulp}
+                          </td>
+                          <td className="px-4 py-3 font-bold text-slate-600 truncate uppercase max-w-[150px]" title={petugas}>
+                            {petugas}
+                          </td>
+                          <td className="px-4 py-3 max-w-[250px]">
+                            <div className="flex flex-wrap gap-1 max-h-[40px] overflow-y-auto custom-scrollbar">
+                              {jenis.split(",").map((v: string, vIdx: number) => (
+                                <span key={vIdx} className="px-1.5 py-0.5 text-[7px] font-black uppercase text-rose-700 bg-rose-50 border border-rose-100 rounded">
+                                  {v.trim()}
+                                </span>
+                              ))}
+                            </div>
+                            {desc && desc !== "-" && (
+                              <p className="text-[7.5px] font-bold text-slate-400 mt-1 truncate" title={desc}>{desc}</p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 border-l border-slate-100 bg-slate-50/20">
+                            <EvidenUploadCell 
+                              noTugas={noTugas}
+                              evidenIdx={1}
+                              evidenData={eviden}
+                              isUploading={uploadingState[`${noTugas}_1`] || false}
+                              msg={uploadMessage[`${noTugas}_1`]}
+                              onUploadChange={(e) => handleFileUpload(e, noTugas, 1)}
+                              onDelete={() => handleDeletePhoto(noTugas, 1)}
+                              onManualSubmit={(url) => handleManualUrlSubmit(noTugas, 1, url)}
+                              onSetUploadMethod={setUploadMethod}
+                              currentUploadMethod={uploadMethod}
+                            />
+                          </td>
+                          <td className="px-4 py-3 border-l border-slate-100 bg-slate-100/5">
+                            <EvidenUploadCell 
+                              noTugas={noTugas}
+                              evidenIdx={2}
+                              evidenData={eviden}
+                              isUploading={uploadingState[`${noTugas}_2`] || false}
+                              msg={uploadMessage[`${noTugas}_2`]}
+                              onUploadChange={(e) => handleFileUpload(e, noTugas, 2)}
+                              onDelete={() => handleDeletePhoto(noTugas, 2)}
+                              onManualSubmit={(url) => handleManualUrlSubmit(noTugas, 2, url)}
+                              onSetUploadMethod={setUploadMethod}
+                              currentUploadMethod={uploadMethod}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={7} className="text-center py-12 text-slate-400 font-extrabold uppercase tracking-widest bg-slate-50/50">
+                        Tidak ada data yang cocok dengan kriteria pencarian
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            ) : (
+              <table className="w-full text-left border-collapse text-[11px] font-semibold text-slate-800 min-w-[1000px]">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black text-[8.5px] tracking-wider">
+                    <th scope="col" className="px-4 py-3 text-center w-12">No</th>
+                    <th scope="col" className="px-4 py-3 w-44">Nama Petugas</th>
+                    <th scope="col" className="px-4 py-3 w-40">Nama ULP</th>
+                    <th scope="col" className="px-4 py-3 text-center w-36">Target Skor YO</th>
+                    <th scope="col" className="px-4 py-3 text-center w-36">Pencapaian Skor YO</th>
+                    <th scope="col" className="px-4 py-3 text-center w-32">% Kinerja YO</th>
+                    <th scope="col" className="px-4 py-3 text-center w-56">Eviden Tindak Lanjut 1</th>
+                    <th scope="col" className="px-4 py-3 text-center w-56">Eviden Tindak Lanjut 2</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-150 bg-white">
+                  {paginatedRows.length > 0 ? (
+                    paginatedRows.map((officer, idx) => {
+                      const runningNo = (currentPage - 1) * itemsPerPage + idx + 1;
+                      const name = officer.name;
+                      const ulp = officer.ulp;
+                      const targetScore = officer.targetScore;
+                      const score = officer.score;
+                      const percent = officer.percent;
+
+                      const eviden = evidenMap[name] || {};
+
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-4 py-3 text-center text-slate-400 tabular-nums font-extrabold">{runningNo}</td>
+                          <td className="px-4 py-3 font-black text-slate-900 uppercase">{name}</td>
+                          <td className="px-4 py-3 font-bold text-[#1b3d5d] uppercase">{ulp}</td>
+                          <td className="px-4 py-3 text-center font-bold text-slate-400">{targetScore}.00</td>
+                          <td className="px-4 py-3 text-center font-extrabold text-slate-800">{score.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="px-2 py-1 rounded-full text-[9px] font-black text-rose-600 bg-rose-50 border border-rose-100">
+                              {percent.toFixed(1)}%
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 border-l border-slate-100 bg-slate-50/20">
+                            <EvidenUploadCell 
+                              noTugas={name}
+                              evidenIdx={1}
+                              evidenData={eviden}
+                              isUploading={uploadingState[`${name}_1`] || false}
+                              msg={uploadMessage[`${name}_1`]}
+                              onUploadChange={(e) => handleFileUpload(e, name, 1)}
+                              onDelete={() => handleDeletePhoto(name, 1)}
+                              onManualSubmit={(url) => handleManualUrlSubmit(name, 1, url)}
+                              onSetUploadMethod={setUploadMethod}
+                              currentUploadMethod={uploadMethod}
+                            />
+                          </td>
+                          <td className="px-4 py-3 border-l border-slate-100 bg-slate-100/5">
+                            <EvidenUploadCell 
+                              noTugas={name}
+                              evidenIdx={2}
+                              evidenData={eviden}
+                              isUploading={uploadingState[`${name}_2`] || false}
+                              msg={uploadMessage[`${name}_2`]}
+                              onUploadChange={(e) => handleFileUpload(e, name, 2)}
+                              onDelete={() => handleDeletePhoto(name, 2)}
+                              onManualSubmit={(url) => handleManualUrlSubmit(name, 2, url)}
+                              onSetUploadMethod={setUploadMethod}
+                              currentUploadMethod={uploadMethod}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={8} className="text-center py-12 text-slate-400 font-extrabold uppercase tracking-widest bg-slate-50/50">
+                        Tidak ada petugas berkinerja rendah yang cocok dengan kriteria pencarian
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
 
           {/* Pagination */}

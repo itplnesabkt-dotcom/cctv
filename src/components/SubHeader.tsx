@@ -20,7 +20,7 @@ interface SubHeaderProps {
   endDate: string;
   onStartDateChange: (date: string) => void;
   onEndDateChange: (date: string) => void;
-  activeTab: 'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING' | 'ADMIN';
+  activeTab: 'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING' | 'YANTEK_OPTIMITATION' | 'ADMIN';
 }
 
 export const SubHeader: React.FC<SubHeaderProps> = ({ 
@@ -47,6 +47,8 @@ export const SubHeader: React.FC<SubHeaderProps> = ({
               <>MONITORING <span className="text-brand-secondary">ANOMALI DATA YANDAL</span></>
             ) : activeTab === 'OVER_SLA' ? (
               <>MONITORING <span className="text-brand-secondary">OVER SLA RPT DAN RCT</span></>
+            ) : activeTab === 'YANTEK_OPTIMITATION' ? (
+              <>OPTIMASI <span className="text-brand-secondary">KINERJA YANTEK</span></>
             ) : activeTab === 'ADMIN' ? (
               <>HALAMAN <span className="text-brand-secondary">ADMIN PANEL</span></>
             ) : (

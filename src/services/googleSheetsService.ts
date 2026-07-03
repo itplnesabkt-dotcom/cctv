@@ -9,6 +9,7 @@ export class GoogleSheetsService {
   private static woCache: any[][] | null = null;
   private static poCache: any[][] | null = null;
   private static anomaliCache: any[][] | null = null;
+  private static vccDataCache: any[][] | null = null;
   private static lastCacheFetch: number = 0;
 
   /**
@@ -36,18 +37,20 @@ export class GoogleSheetsService {
     try {
       // Fetch and parse sheets from the official Spreadsheet ID by default
       const now = Date.now();
-      if (!this.woCache || !this.poCache || !this.anomaliCache || (now - this.lastCacheFetch > this.CACHE_DURATION_MS)) {
+      if (!this.woCache || !this.poCache || !this.anomaliCache || !this.vccDataCache || (now - this.lastCacheFetch > this.CACHE_DURATION_MS)) {
         console.log("Fetching live sheets from Spreadsheet ID: " + this.SPREADSHEET_ID);
-        const [rawWo, rawPo, rawAnomali] = await Promise.all([
+        const [rawWo, rawPo, rawAnomali, rawVcc] = await Promise.all([
           this.fetchSheetDataRaw("WO"),
           this.fetchSheetDataRaw("PO"),
-          this.fetchSheetDataRaw("ANOMALI").catch(() => [] as any[][])
+          this.fetchSheetDataRaw("ANOMALI").catch(() => [] as any[][]),
+          this.fetchSheetDataRaw("VCC_DATA").catch(() => [] as any[][])
         ]);
 
         if (rawWo && rawWo.length > 1) {
           this.woCache = rawWo;
           this.poCache = rawPo && rawPo.length > 1 ? rawPo : [["No Tugas", "Tgl Catat", "Posko", "Personil Yantek", "CCTV", "Status"]];
           this.anomaliCache = rawAnomali && rawAnomali.length > 1 ? rawAnomali : [["Timestamp", "NOMOR WO YANTEK DENGAN CCTV", "POSKO ULP", "USER REGU", "TANGGAL WO", "Anomali", "KETERANGAN ANOMALI"]];
+          this.vccDataCache = rawVcc && rawVcc.length > 1 ? rawVcc : [];
           this.lastCacheFetch = now;
         }
       }
@@ -59,7 +62,8 @@ export class GoogleSheetsService {
           this.anomaliCache || [], 
           startDate, 
           endDate, 
-          selectedUlp
+          selectedUlp,
+          this.vccDataCache || []
         );
       }
     } catch (err: any) {
@@ -247,7 +251,8 @@ export class GoogleSheetsService {
     anomaliRows: any[][],
     startDateStr: string,
     endDateStr: string,
-    selectedUlp: string
+    selectedUlp: string,
+    vccRows?: any[][]
   ): DashboardData {
     const woHeaders = woRows[0] || [];
     const findIndex = (headers: string[], targets: string[], fallback: number) => {
@@ -1070,6 +1075,7 @@ export class GoogleSheetsService {
       overSla,
       rating,
       anomali,
+      vccData: vccRows,
       rawWoRows: dataWoRows,
       rawPoRows: dataPoRows,
       distinctWoRows,

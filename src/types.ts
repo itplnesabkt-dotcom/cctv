@@ -40,6 +40,7 @@ export interface DashboardData {
   overSla: OverSLAData;
   rating: RatingData;
   anomali: AnomaliData;
+  vccData?: any[][];
   rawWoRows: any[][];
   rawPoRows: any[][];
   distinctWoRows: any[][];
