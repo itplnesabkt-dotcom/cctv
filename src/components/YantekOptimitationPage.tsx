@@ -217,7 +217,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
 
     const avgRpt = totalWo > 0 ? parseFloat((totalRpt / totalWo).toFixed(1)) : 0;
     const avgRct = totalWo > 0 ? parseFloat((totalRct / totalWo).toFixed(1)) : 0;
-    const onTimeSlaRate = totalWo > 0 ? parseFloat((((totalWo - rptOver30Count) / totalWo) * 100).toFixed(1)) : 100;
+    const onTimeSlaRate = totalWo > 0 ? Math.min(100, parseFloat((((totalWo - rptOver30Count) / totalWo) * 100).toFixed(1))) : 100;
 
     // Process ULP Metrics
     const ulpMap: { [key: string]: any } = {};
@@ -260,7 +260,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
       const item = ulpMap[key];
       const avgRptItem = parseFloat((item.totalRpt / item.totalWo).toFixed(1));
       const avgRctItem = parseFloat((item.totalRct / item.totalWo).toFixed(1));
-      const compliance = parseFloat((((item.totalWo - item.rptOver30) / item.totalWo) * 100).toFixed(1));
+      const compliance = Math.min(100, parseFloat((((item.totalWo - item.rptOver30) / item.totalWo) * 100).toFixed(1)));
       const rating = item.ratingCount > 0 ? parseFloat((item.totalRating / item.ratingCount).toFixed(2)) : 5.0;
       
       // Determine optimization status & workload
@@ -317,7 +317,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
         totalWo: item.totalWo,
         avgRpt: parseFloat((item.totalRpt / item.totalWo).toFixed(1)),
         avgRct: parseFloat((item.totalRct / item.totalWo).toFixed(1)),
-        compliance: parseFloat((((item.totalWo - item.overSla) / item.totalWo) * 100).toFixed(1))
+        compliance: Math.min(100, parseFloat((((item.totalWo - item.overSla) / item.totalWo) * 100).toFixed(1)))
       };
     }).sort((a, b) => b.totalWo - a.totalWo);
 
@@ -456,17 +456,17 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
       const defaults = {
         avgPerforma: 94.07,
         avgKinerjaYo: 98.92,
-        avgHariKerja: 110.84,
-        totalWoPo: 239.95
+        avgHariKerja: 100, // Capped at 100
+        totalWoPo: 100     // Capped at 100
       };
 
       if (selectedUlp !== 'ALL') {
         const mockMap: { [key: string]: typeof defaults } = {
-          "LUBUK BASUNG": { avgPerforma: 90.31, avgKinerjaYo: 93.01, avgHariKerja: 116.74, totalWoPo: 234.05 },
-          "BASO": { avgPerforma: 99.11, avgKinerjaYo: 105.15, avgHariKerja: 112.04, totalWoPo: 263.02 },
-          "SIMPANG EMPAT": { avgPerforma: 90.56, avgKinerjaYo: 93.18, avgHariKerja: 110.00, totalWoPo: 243.44 },
-          "LUBUK SIKAPING": { avgPerforma: 95.38, avgKinerjaYo: 104.17, avgHariKerja: 102.80, totalWoPo: 232.79 },
-          "PADANG PANJANG": { avgPerforma: 98.11, avgKinerjaYo: 108.61, avgHariKerja: 105.44, totalWoPo: 241.18 }
+          "LUBUK BASUNG": { avgPerforma: 90.31, avgKinerjaYo: 93.01, avgHariKerja: 100, totalWoPo: 100 },
+          "BASO": { avgPerforma: 99.11, avgKinerjaYo: 100, avgHariKerja: 100, totalWoPo: 100 },
+          "SIMPANG EMPAT": { avgPerforma: 90.56, avgKinerjaYo: 93.18, avgHariKerja: 100, totalWoPo: 100 },
+          "LUBUK SIKAPING": { avgPerforma: 95.38, avgKinerjaYo: 100, avgHariKerja: 100, totalWoPo: 100 },
+          "PADANG PANJANG": { avgPerforma: 98.11, avgKinerjaYo: 100, avgHariKerja: 100, totalWoPo: 100 }
         };
         const uKey = selectedUlp.toUpperCase();
         for (const k of Object.keys(mockMap)) {
@@ -493,8 +493,14 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
     const idxJumlahHariSeharusnya = findIndex(["Jumlah Hari Seharusnya", "Hari Seharusnya"]);
     const idxJumlahHariRealisasi = findIndex(["Jumlah Hari Realisasi", "Hari Realisasi"]);
     const idxRct = findIndex(["RCT", "Rct"]);
-    const idxPersentasePerformaP0 = findIndex(["Persentase Performa P0", "Performa P0"]);
-    const idxPersentasePerformaWo = findIndex(["Persentase Performa Wo", "Performa Wo"]);
+    let idxPersentasePerformaP0 = findIndex(["Persentase Performa P0"]);
+    if (idxPersentasePerformaP0 === -1) {
+      idxPersentasePerformaP0 = findIndex(["Performa P0"]);
+    }
+    let idxPersentasePerformaWo = findIndex(["Persentase Performa Wo"]);
+    if (idxPersentasePerformaWo === -1) {
+      idxPersentasePerformaWo = findIndex(["Performa Wo"]);
+    }
 
     const parseNum = (val: any): number => {
       if (val === undefined || val === null || val === "") return 0;
@@ -605,10 +611,10 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
     const avgPerfWo = countPerfWo > 0 ? (sumPerfWo / countPerfWo) : 0;
 
     // Calculators
-    const avgPerforma = (avgTotalSkor / 15) * 100;
-    const avgKinerjaYo = avgSeharusnya > 0 ? (avgRealisasi / avgSeharusnya) * 100 : 0;
-    const avgHariKerja = avgRealisasi > 0 ? (((avgRct / avgRealisasi) + 1.5) / 8) * 100 : 0;
-    const totalWoPo = avgPerfP0 + avgPerfWo;
+    const avgPerforma = Math.min(100, (avgTotalSkor / 15) * 100);
+    const avgKinerjaYo = Math.min(100, avgSeharusnya > 0 ? (avgRealisasi / avgSeharusnya) * 100 : 0);
+    const avgHariKerja = Math.min(100, avgRealisasi > 0 ? (((avgRct / avgRealisasi) + 1.5) / 8) * 100 : 0);
+    const totalWoPo = Math.min(100, avgPerfP0 + avgPerfWo);
 
     return {
       avgPerforma: parseFloat(avgPerforma.toFixed(2)),
@@ -636,11 +642,18 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
         { name: "LUBUK SIKAPING", totalNilaiYo: 95.38, nilaiHariKerja: 104.17, nilaiProduktivitas: 102.80, nilaiPerformaWoPo: 232.79 },
         { name: "PADANG PANJANG", totalNilaiYo: 98.11, nilaiHariKerja: 108.61, nilaiProduktivitas: 105.44, nilaiPerformaWoPo: 241.18 }
       ];
+      const mappedMocks = mockUlpList.map(u => ({
+        name: u.name,
+        totalNilaiYo: Math.min(100, u.totalNilaiYo),
+        nilaiHariKerja: Math.min(100, u.nilaiHariKerja),
+        nilaiProduktivitas: Math.min(100, u.nilaiProduktivitas),
+        nilaiPerformaWoPo: Math.min(100, u.nilaiPerformaWoPo)
+      }));
       if (selectedUlp !== 'ALL') {
         const uKey = selectedUlp.toUpperCase();
-        return mockUlpList.filter(u => u.name.includes(uKey) || uKey.includes(u.name));
+        return mappedMocks.filter(u => u.name.includes(uKey) || uKey.includes(u.name));
       }
-      return mockUlpList;
+      return mappedMocks;
     }
 
     const headers = rawRows[0] || [];
@@ -658,8 +671,14 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
     const idxJumlahHariSeharusnya = findIndex(["Jumlah Hari Seharusnya", "Hari Seharusnya"]);
     const idxJumlahHariRealisasi = findIndex(["Jumlah Hari Realisasi", "Hari Realisasi"]);
     const idxRct = findIndex(["RCT", "Rct"]);
-    const idxPersentasePerformaP0 = findIndex(["Persentase Performa P0", "Performa P0"]);
-    const idxPersentasePerformaWo = findIndex(["Persentase Performa Wo", "Performa Wo"]);
+    let idxPersentasePerformaP0 = findIndex(["Persentase Performa P0"]);
+    if (idxPersentasePerformaP0 === -1) {
+      idxPersentasePerformaP0 = findIndex(["Performa P0"]);
+    }
+    let idxPersentasePerformaWo = findIndex(["Persentase Performa Wo"]);
+    if (idxPersentasePerformaWo === -1) {
+      idxPersentasePerformaWo = findIndex(["Performa Wo"]);
+    }
 
     const parseNum = (val: any): number => {
       if (val === undefined || val === null || val === "") return 0;
@@ -695,6 +714,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
     };
 
     const ulpGroups: { [ulpName: string]: {
+      displayName: string;
       skorSum: number; skorCount: number;
       seharusnyaSum: number; seharusnyaCount: number;
       realisasiSum: number; realisasiCount: number;
@@ -712,6 +732,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
       const ulpKey = rawUlpName.toUpperCase();
       if (!ulpGroups[ulpKey]) {
         ulpGroups[ulpKey] = {
+          displayName: rawUlpName,
           skorSum: 0, skorCount: 0,
           seharusnyaSum: 0, seharusnyaCount: 0,
           realisasiSum: 0, realisasiCount: 0,
@@ -767,13 +788,13 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
       const avgPerfP0 = g.p0Count > 0 ? (g.p0Sum / g.p0Count) : 0;
       const avgPerfWo = g.woCount > 0 ? (g.woSum / g.woCount) : 0;
 
-      const totalNilaiYo = (avgTotalSkor / 15) * 100;
-      const nilaiHariKerja = avgSeharusnya > 0 ? (avgRealisasi / avgSeharusnya) * 100 : 0;
-      const nilaiProduktivitas = avgRealisasi > 0 ? (((avgRct / avgRealisasi) + 1.5) / 8) * 100 : 0;
-      const nilaiPerformaWoPo = avgPerfP0 + avgPerfWo;
+      const totalNilaiYo = Math.min(100, (avgTotalSkor / 15) * 100);
+      const nilaiHariKerja = Math.min(100, avgSeharusnya > 0 ? (avgRealisasi / avgSeharusnya) * 100 : 0);
+      const nilaiProduktivitas = Math.min(100, avgRealisasi > 0 ? (((avgRct / avgRealisasi) + 1.5) / 8) * 100 : 0);
+      const nilaiPerformaWoPo = Math.min(100, avgPerfP0 + avgPerfWo);
 
       return {
-        name,
+        name: g.displayName,
         totalNilaiYo: parseFloat(totalNilaiYo.toFixed(2)),
         nilaiHariKerja: parseFloat(nilaiHariKerja.toFixed(2)),
         nilaiProduktivitas: parseFloat(nilaiProduktivitas.toFixed(2)),
@@ -783,7 +804,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
 
     if (selectedUlp !== 'ALL') {
       const uKey = selectedUlp.toUpperCase();
-      return list.filter(u => u.name.includes(uKey) || uKey.includes(u.name));
+      return list.filter(u => u.name.toUpperCase().includes(uKey) || uKey.includes(u.name.toUpperCase()));
     }
 
     return list;
@@ -867,7 +888,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
         let pctYo = 0;
 
         if (idxPersentaseSkor !== -1) {
-          pctYo = parseNum(row[idxPersentaseSkor]);
+          pctYo = Math.min(100, parseNum(row[idxPersentaseSkor]));
         }
         if (idxTotalSkor !== -1) {
           totalSkor = parseNum(row[idxTotalSkor]);
@@ -875,7 +896,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
 
         // Fallbacks if percentage is missing
         if (idxPersentaseSkor === -1 && idxTotalSkor !== -1) {
-          pctYo = (totalSkor / 15) * 100;
+          pctYo = Math.min(100, (totalSkor / 15) * 100);
         }
         
         // Filter: % PENCAPAIAN KINERJA YO kecil dari pada 60%
@@ -885,7 +906,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
             ulp: cleanUlp || "ULP BUKITTINGGI",
             targetScore: 15,
             score: totalSkor,
-            percent: parseFloat(pctYo.toFixed(2))
+            percent: Math.min(100, parseFloat(pctYo.toFixed(2)))
           });
         }
       });
@@ -1007,7 +1028,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
 
         if (countTotalSkor > 0) {
           const avgTotalSkor = sumTotalSkor / countTotalSkor;
-          realRate = (avgTotalSkor / 15) * 100;
+          realRate = Math.min(100, (avgTotalSkor / 15) * 100);
         }
       }
 
@@ -1036,7 +1057,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
             // Calculate percentage from total skor. 
             // Since max Total Skor is 15, we convert it to percentage: (val / 15) * 100.
             // If the value is already > 15, we can treat it as percentage directly.
-            const pct = val > 15 ? val : (val / 15) * 100;
+            const pct = Math.min(100, val > 15 ? val : (val / 15) * 100);
 
             if (pct > 60) {
               greenCount++;
@@ -1060,7 +1081,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
         name: u.name,
         up3: u.up3,
         targetRate: 100,
-        realRate: parseFloat(realRate.toFixed(2)),
+        realRate: Math.min(100, parseFloat(realRate.toFixed(2))),
         green: greenCount,
         yellow: yellowCount,
         red: redCount,
@@ -1087,7 +1108,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
       rows: filteredList,
       totalUp3: {
         targetRate: 100,
-        realRate: parseFloat(averageRealRate.toFixed(2)),
+        realRate: Math.min(100, parseFloat(averageRealRate.toFixed(2))),
         green: totalGreen,
         yellow: totalYellow,
         red: totalRed,
@@ -1196,9 +1217,9 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
           totalSkorVal = parseNum(row[idxTotalSkor]);
         }
         if (idxPersentaseSkor !== -1) {
-          pct = parseNum(row[idxPersentaseSkor]);
+          pct = Math.min(100, parseNum(row[idxPersentaseSkor]));
         } else if (idxTotalSkor !== -1) {
-          pct = (totalSkorVal / 15) * 100;
+          pct = Math.min(100, (totalSkorVal / 15) * 100);
         }
 
         let matchesCategory = false;
@@ -1216,7 +1237,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
           list.push({
             employeeName: idxEmployeename !== -1 ? String(row[idxEmployeename] || "").toUpperCase() : "UNNAMED OFFICER",
             namaUlp: idxNamaUlp !== -1 ? String(row[idxNamaUlp] || "").toUpperCase() : "ULP BUKITTINGGI",
-            persentaseSkor: pct,
+            persentaseSkor: Math.min(100, pct),
             skorHariKerja: idxSkorHariKerja !== -1 ? parseNum(row[idxSkorHariKerja]) : 0,
             skorPerforma: idxSkorPerforma !== -1 ? parseNum(row[idxSkorPerforma]) : 0,
             skorProduktivitas: idxSkorProduktivitas !== -1 ? parseNum(row[idxSkorProduktivitas]) : 0,
@@ -1362,7 +1383,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
                   ulpPerformanceData.map((row, index) => (
                     <tr key={index} className="hover:bg-slate-50/40 transition-colors">
                       <td className="py-3.5 px-4 font-black text-slate-800 tracking-tight">
-                        ULP {row.name}
+                        {row.name.toUpperCase().startsWith('ULP') ? row.name : `ULP ${row.name}`}
                       </td>
                       <td className="py-3.5 px-4 text-right font-bold text-brand-secondary">
                         {row.totalNilaiYo}%
