@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { DashboardData } from '../types';
 import { 
   Zap, 
@@ -57,6 +57,11 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
     title: string;
   } | null>(null);
   const [modalSearchTerm, setModalSearchTerm] = useState<string>('');
+  const [officerPage, setOfficerPage] = useState<number>(1);
+
+  useEffect(() => {
+    setOfficerPage(1);
+  }, [selectedUlp, selectedMonth]);
 
   // Filter VCC_DATA by selectedMonth based on "Tgl Lapor" column
   const filteredVccData = useMemo(() => {
@@ -767,6 +772,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
     const dataRows = rawRows.slice(1);
     dataRows.forEach(row => {
       if (!row || row.length === 0) return;
+
       const rawUlpName = idxNamaUlp !== -1 ? String(row[idxNamaUlp] || "").trim() : "";
       if (!rawUlpName) return;
 
@@ -850,6 +856,185 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
 
     return list;
   }, [filteredVccData, selectedUlp]);
+
+  // Hook to process and parse Officer-specific performance data from VCC_DATA sheet
+  const officerPerformanceData = useMemo(() => {
+    const rawRows = filteredVccData;
+    const isFilteredButEmpty = selectedMonth && data.vccData && data.vccData.length > 1 && rawRows.length <= 1;
+
+    if (isFilteredButEmpty) {
+      return [];
+    }
+
+    if (rawRows.length <= 1) {
+      return [];
+    }
+
+    const headers = rawRows[0] || [];
+    const findIndex = (targets: string[]) => {
+      const lowerTargets = targets.map(t => t.toLowerCase().trim().replace(/['"]/g, ""));
+      return headers.findIndex(h => {
+        const cleaned = String(h || "").toLowerCase().trim().replace(/['"]/g, "");
+        return lowerTargets.includes(cleaned);
+      });
+    };
+
+    const idxNamaUlp = findIndex(["Nama Ulp", "Nama ULP", "Ulp", "ULP"]);
+    let idxEmployeeName = findIndex(["Employeename"]);
+    if (idxEmployeeName === -1) {
+      idxEmployeeName = findIndex(["Employee Name", "Nama Petugas", "Petugas", "Employeename"]);
+    }
+    const idxTotalSkor = findIndex(["Total Skor", "Skor Total"]);
+    const idxPersentaseSkor = findIndex(["Persentase Skor", "Persentase skor", "Skor"]);
+    const idxJumlahHariSeharusnya = findIndex(["Jumlah Hari Seharusnya", "Hari Seharusnya"]);
+    const idxJumlahHariRealisasi = findIndex(["Jumlah Hari Realisasi", "Hari Realisasi"]);
+    const idxRct = findIndex(["RCT", "Rct"]);
+    let idxPersentasePerformaP0 = findIndex(["Persentase Performa P0"]);
+    if (idxPersentasePerformaP0 === -1) {
+      idxPersentasePerformaP0 = findIndex(["Performa P0"]);
+    }
+    let idxPersentasePerformaWo = findIndex(["Persentase Performa Wo"]);
+    if (idxPersentasePerformaWo === -1) {
+      idxPersentasePerformaWo = findIndex(["Performa Wo"]);
+    }
+
+    const parseNum = (val: any): number => {
+      if (val === undefined || val === null || val === "") return 0;
+      if (typeof val === 'number') return val;
+      const str = String(val).trim();
+      if (!str) return 0;
+
+      let cleaned = str.replace('%', '').trim();
+      const hasComma = cleaned.includes(',');
+      const hasDot = cleaned.includes('.');
+
+      if (hasComma && hasDot) {
+        if (cleaned.indexOf(',') < cleaned.indexOf('.')) {
+          cleaned = cleaned.replace(/,/g, '');
+        } else {
+          cleaned = cleaned.replace(/\./g, '').replace(/,/g, '.');
+        }
+      } else if (hasComma) {
+        const parts = cleaned.split(',');
+        if (parts[parts.length - 1].length === 3 && parts[0].length <= 3) {
+          cleaned = cleaned.replace(/,/g, '');
+        } else {
+          cleaned = cleaned.replace(/,/g, '.');
+        }
+      } else if (hasDot) {
+        const parts = cleaned.split('.');
+        if (parts[parts.length - 1].length === 3 && parts[0].length <= 3) {
+          cleaned = cleaned.replace(/\./g, '');
+        }
+      }
+
+      return parseFloat(cleaned) || 0;
+    };
+
+    const officerGroups: { [officerName: string]: {
+      displayName: string;
+      skorSum: number; skorCount: number;
+      seharusnyaSum: number; seharusnyaCount: number;
+      realisasiSum: number; realisasiCount: number;
+      rctSum: number; rctCount: number;
+      p0Sum: number; p0Count: number;
+      woSum: number; woCount: number;
+    } } = {};
+
+    const dataRows = rawRows.slice(1);
+    dataRows.forEach(row => {
+      if (!row || row.length === 0) return;
+
+      const rawUlpName = idxNamaUlp !== -1 ? String(row[idxNamaUlp] || "").trim() : "";
+      const matchesUlp = selectedUlp === 'ALL' || rawUlpName.toUpperCase().includes(selectedUlp.toUpperCase()) || selectedUlp.toUpperCase().includes(rawUlpName.toUpperCase());
+      if (!matchesUlp) return;
+
+      const rawOfficerName = idxEmployeeName !== -1 && String(row[idxEmployeeName] || "").trim() 
+        ? String(row[idxEmployeeName]).trim() 
+        : (rawUlpName ? `PETUGAS ${rawUlpName}` : "PETUGAS TANPA NAMA");
+
+      const officerKey = rawOfficerName.toUpperCase();
+      if (!officerGroups[officerKey]) {
+        officerGroups[officerKey] = {
+          displayName: rawOfficerName,
+          skorSum: 0, skorCount: 0,
+          seharusnyaSum: 0, seharusnyaCount: 0,
+          realisasiSum: 0, realisasiCount: 0,
+          rctSum: 0, rctCount: 0,
+          p0Sum: 0, p0Count: 0,
+          woSum: 0, woCount: 0
+        };
+      }
+
+      const group = officerGroups[officerKey];
+
+      if (idxTotalSkor !== -1) {
+        group.skorSum += parseNum(row[idxTotalSkor]);
+        group.skorCount++;
+      } else if (idxPersentaseSkor !== -1) {
+        const pSkor = parseNum(row[idxPersentaseSkor]);
+        group.skorSum += (pSkor / 100) * 15;
+        group.skorCount++;
+      }
+
+      if (idxJumlahHariSeharusnya !== -1) {
+        group.seharusnyaSum += parseNum(row[idxJumlahHariSeharusnya]);
+        group.seharusnyaCount++;
+      }
+
+      if (idxJumlahHariRealisasi !== -1) {
+        group.realisasiSum += parseNum(row[idxJumlahHariRealisasi]);
+        group.realisasiCount++;
+      }
+
+      if (idxRct !== -1) {
+        group.rctSum += parseNum(row[idxRct]);
+        group.rctCount++;
+      }
+
+      if (idxPersentasePerformaP0 !== -1) {
+        group.p0Sum += parseNum(row[idxPersentasePerformaP0]);
+        group.p0Count++;
+      }
+
+      if (idxPersentasePerformaWo !== -1) {
+        group.woSum += parseNum(row[idxPersentasePerformaWo]);
+        group.woCount++;
+      }
+    });
+
+    const list = Object.keys(officerGroups).map(name => {
+      const g = officerGroups[name];
+      const avgTotalSkor = g.skorCount > 0 ? (g.skorSum / g.skorCount) : 0;
+      const avgSeharusnya = g.seharusnyaCount > 0 ? (g.seharusnyaSum / g.seharusnyaCount) : 0;
+      const avgRealisasi = g.realisasiCount > 0 ? (g.realisasiSum / g.realisasiCount) : 0;
+      const avgRct = g.rctCount > 0 ? (g.rctSum / g.rctCount) : 0;
+      const avgPerfP0 = g.p0Count > 0 ? (g.p0Sum / g.p0Count) : 0;
+      const avgPerfWo = g.woCount > 0 ? (g.woSum / g.woCount) : 0;
+
+      const totalNilaiYo = Math.min(100, (avgTotalSkor / 15) * 100);
+      const nilaiHariKerja = Math.min(100, avgSeharusnya > 0 ? (avgRealisasi / avgSeharusnya) * 100 : 0);
+      const nilaiProduktivitas = Math.min(100, avgRealisasi > 0 ? (((avgRct / avgRealisasi) + 1.5) / 8) * 100 : 0);
+      const nilaiPerformaWoPo = Math.min(100, avgPerfP0 + avgPerfWo);
+
+      return {
+        name: g.displayName,
+        totalNilaiYo: parseFloat(totalNilaiYo.toFixed(2)),
+        nilaiHariKerja: parseFloat(nilaiHariKerja.toFixed(2)),
+        nilaiProduktivitas: parseFloat(nilaiProduktivitas.toFixed(2)),
+        nilaiPerformaWoPo: parseFloat(nilaiPerformaWoPo.toFixed(2))
+      };
+    });
+
+    return list;
+  }, [filteredVccData, selectedUlp]);
+
+  const itemsPerPage = 10;
+  const totalOfficerPages = Math.ceil(officerPerformanceData.length / itemsPerPage) || 1;
+  const paginatedOfficers = useMemo(() => {
+    const startIndex = (officerPage - 1) * itemsPerPage;
+    return officerPerformanceData.slice(startIndex, startIndex + itemsPerPage);
+  }, [officerPerformanceData, officerPage]);
 
   // Hook to process bottom performing officers under 60%
   const bottomOfficers = useMemo(() => {
@@ -1394,7 +1579,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-5 bg-brand-secondary rounded-full" />
-              <h3 className="text-sm font-black italic tracking-tighter text-brand-primary uppercase">PERFORMA PER ULP</h3>
+              <h3 className="text-sm font-black italic tracking-tighter text-brand-primary uppercase">PERFORMA PER PETUGAS</h3>
             </div>
             <div className="flex items-center gap-2 text-[10px] text-gray-400 font-bold">
               <Info size={12} />
@@ -1405,37 +1590,37 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[600px]">
               <thead>
-                <tr className="border-b border-gray-100 text-[10px] font-black uppercase text-gray-400 tracking-wider bg-slate-50/50">
-                  <th className="py-3 px-4">NAMA ULP</th>
-                  <th className="py-3 px-4 text-right">TOTAL NILAI YO</th>
-                  <th className="py-3 px-4 text-right">NILAI HARI KERJA</th>
-                  <th className="py-3 px-4 text-right">NILAI PRODUKTIVITAS</th>
-                  <th className="py-3 px-4 text-right">NILAI PERFORMA WO + PO</th>
+                <tr className="border-b border-gray-100 text-[9px] font-black uppercase text-gray-400 tracking-wider bg-slate-50/50">
+                  <th className="py-1.5 px-3">NAMA PETUGAS</th>
+                  <th className="py-1.5 px-3 text-right">TOTAL NILAI YO</th>
+                  <th className="py-1.5 px-3 text-right">NILAI HARI KERJA</th>
+                  <th className="py-1.5 px-3 text-right">NILAI PRODUKTIVITAS</th>
+                  <th className="py-1.5 px-3 text-right">NILAI PERFORMA WO + PO</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50 text-xs font-semibold text-gray-700">
-                {ulpPerformanceData.length === 0 ? (
+              <tbody className="divide-y divide-gray-50 text-[10px] font-semibold text-gray-700">
+                {officerPerformanceData.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-gray-400 font-medium">
-                      Tidak ada data untuk filter ULP ini.
+                    <td colSpan={5} className="py-8 text-center text-gray-400 font-medium text-xs">
+                      Tidak ada data petugas untuk filter ini.
                     </td>
                   </tr>
                 ) : (
-                  ulpPerformanceData.map((row, index) => (
+                  paginatedOfficers.map((row, index) => (
                     <tr key={index} className="hover:bg-slate-50/40 transition-colors">
-                      <td className="py-3.5 px-4 font-black text-slate-800 tracking-tight">
-                        {row.name.toUpperCase().startsWith('ULP') ? row.name : `ULP ${row.name}`}
+                      <td className="py-1.5 px-3 font-black text-slate-800 tracking-tight">
+                        {row.name}
                       </td>
-                      <td className="py-3.5 px-4 text-right font-bold text-brand-secondary">
+                      <td className="py-1.5 px-3 text-right font-bold text-brand-secondary">
                         {row.totalNilaiYo}%
                       </td>
-                      <td className="py-3.5 px-4 text-right font-bold text-emerald-600">
+                      <td className="py-1.5 px-3 text-right font-bold text-emerald-600">
                         {row.nilaiHariKerja}%
                       </td>
-                      <td className="py-3.5 px-4 text-right font-bold text-cyan-600">
+                      <td className="py-1.5 px-3 text-right font-bold text-cyan-600">
                         {row.nilaiProduktivitas}%
                       </td>
-                      <td className="py-3.5 px-4 text-right font-bold text-purple-600">
+                      <td className="py-1.5 px-3 text-right font-bold text-purple-600">
                         {row.nilaiPerformaWoPo}%
                       </td>
                     </tr>
@@ -1444,6 +1629,56 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {officerPerformanceData.length > itemsPerPage && (
+            <div className="flex flex-col sm:flex-row items-center justify-between pt-2.5 border-t border-gray-100 text-[10px] gap-3">
+              <span className="text-gray-500 font-bold">
+                Menampilkan {Math.min(officerPerformanceData.length, (officerPage - 1) * itemsPerPage + 1)} - {Math.min(officerPerformanceData.length, officerPage * itemsPerPage)} dari {officerPerformanceData.length} Petugas
+              </span>
+              <div className="flex items-center gap-1 flex-wrap">
+                <button
+                  onClick={() => setOfficerPage(prev => Math.max(1, prev - 1))}
+                  disabled={officerPage === 1}
+                  className="px-2 py-1 rounded-md border border-gray-200 text-gray-600 font-bold hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-transparent transition-colors text-[10px]"
+                >
+                  Sebelumnya
+                </button>
+                <div className="flex items-center gap-0.5">
+                  {Array.from({ length: totalOfficerPages }, (_, i) => i + 1)
+                    .filter(p => {
+                      if (totalOfficerPages <= 5) return true;
+                      return Math.abs(p - officerPage) <= 1 || p === 1 || p === totalOfficerPages;
+                    })
+                    .map((p, idx, arr) => {
+                      const showEllipsis = idx > 0 && p - arr[idx - 1] > 1;
+                      return (
+                        <React.Fragment key={p}>
+                          {showEllipsis && <span className="px-1 text-gray-400 font-bold">...</span>}
+                          <button
+                            onClick={() => setOfficerPage(p)}
+                            className={`w-6 h-6 rounded-md flex items-center justify-center font-bold text-[10px] transition-colors ${
+                              officerPage === p
+                                ? 'bg-brand-primary text-white'
+                                : 'border border-gray-200 text-gray-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        </React.Fragment>
+                      );
+                    })}
+                </div>
+                <button
+                  onClick={() => setOfficerPage(prev => Math.min(totalOfficerPages, prev + 1))}
+                  disabled={officerPage === totalOfficerPages}
+                  className="px-2 py-1 rounded-md border border-gray-200 text-gray-600 font-bold hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-transparent transition-colors text-[10px]"
+                >
+                  Selanjutnya
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right Chart - Performance per ULP */}
@@ -1464,7 +1699,7 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
                   dataKey="name" 
                   tickLine={false} 
                   axisLine={false} 
-                  tick={{ fill: '#64748b', fontSize: 9, fontWeight: 'bold' }} 
+                  tick={{ fill: '#64748b', fontSize: 8, fontWeight: 'bold' }} 
                 />
                 <YAxis 
                   tickLine={false} 

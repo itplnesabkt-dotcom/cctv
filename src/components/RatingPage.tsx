@@ -59,6 +59,20 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
     });
   };
 
+  const handleOfficerCellClick = (officerName: string, label: string, list: any[][]) => {
+    // Filter rows where the officer's name is in row[2] (officersStr)
+    const filtered = list.filter(row => {
+      const officersStr = String(row[2] || "").toLowerCase();
+      return officersStr.includes(officerName.toLowerCase());
+    });
+    
+    setModalData({
+      isOpen: true,
+      title: `${officerName.toUpperCase()} - ${label}`,
+      data: filtered
+    });
+  };
+
   const uniqueRegus = ['Semua Regu', ...[...new Set(rating.officerRatings.map(officer => officer.regu).filter(Boolean))].sort()];
   const uniqueUnits = ['Semua Unit', ...[...new Set(rating.officerRatings.map(officer => officer.ulp).filter(Boolean))].sort()];
   const uniqueKPRegus = ['Semua Regu', ...[...new Set(rating.kpRatings.map(kp => kp.regu).filter(Boolean))].sort()];
@@ -313,11 +327,36 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                       <tr key={idx} className="border-b border-gray-50 text-[10px] font-bold italic text-brand-primary hover:bg-blue-50/30 transition-colors group">
                         <td className="px-4 py-[5.2px] text-left border-r border-gray-50 uppercase tracking-tight group-hover:text-blue-700 font-black truncate max-w-[140px]">{item.name}</td>
                         <td className="px-4 py-[5.2px] text-left border-r border-gray-50 uppercase tracking-tight text-gray-400 font-medium truncate max-w-[100px]">{item.ulp}</td>
-                        <td className="px-2 py-[5.2px] border-r border-gray-50 font-black text-slate-700">{item.totalWoPlnMobile}</td>
-                        <td className="px-2 py-[5.2px] border-r border-gray-50 text-emerald-600 font-black">{item.rating5}</td>
-                        <td className="px-2 py-[5.2px] border-r border-gray-50 text-amber-600 font-black">{item.rating34}</td>
-                        <td className="px-2 py-[5.2px] border-r border-gray-50 text-rose-600 font-black">{item.rating12}</td>
-                        <td className="px-2 py-[5.2px] border-r border-gray-50 bg-slate-50 text-slate-800 font-medium">{item.noRating}</td>
+                        <td 
+                          onClick={() => handleOfficerCellClick(item.name, 'TOTAL WO', rating.totalWoPlnMobileList)}
+                          className="px-2 py-[5.2px] border-r border-gray-50 font-black text-slate-700 cursor-pointer hover:bg-slate-100 transition-colors"
+                        >
+                          {item.totalWoPlnMobile}
+                        </td>
+                        <td 
+                          onClick={() => handleOfficerCellClick(item.name, 'RATING 5', rating.rating5List)}
+                          className="px-2 py-[5.2px] border-r border-gray-50 text-emerald-600 font-black cursor-pointer hover:bg-emerald-50 transition-colors"
+                        >
+                          {item.rating5}
+                        </td>
+                        <td 
+                          onClick={() => handleOfficerCellClick(item.name, 'RATING 3-4', rating.rating34List)}
+                          className="px-2 py-[5.2px] border-r border-gray-50 text-amber-600 font-black cursor-pointer hover:bg-amber-50 transition-colors"
+                        >
+                          {item.rating34}
+                        </td>
+                        <td 
+                          onClick={() => handleOfficerCellClick(item.name, 'RATING 1-2', rating.rating12List)}
+                          className="px-2 py-[5.2px] border-r border-gray-50 text-rose-600 font-black cursor-pointer hover:bg-rose-50 transition-colors"
+                        >
+                          {item.rating12}
+                        </td>
+                        <td 
+                          onClick={() => handleOfficerCellClick(item.name, 'NO RATING', rating.noRatingList)}
+                          className="px-2 py-[5.2px] border-r border-gray-50 bg-slate-50 text-slate-800 font-medium cursor-pointer hover:bg-slate-100 transition-colors"
+                        >
+                          {item.noRating}
+                        </td>
                         <td className="p-0">
                           <div className={`w-full py-[5.2px] flex items-center justify-center font-black italic text-white text-[10px] ${item.percentageKomulatif === '100%' ? 'bg-emerald-500' : 'bg-rose-600'}`}>
                             {item.percentageKomulatif}
