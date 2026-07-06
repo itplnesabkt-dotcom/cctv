@@ -553,13 +553,26 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
     let sumPerfP0 = 0, countPerfP0 = 0;
     let sumPerfWo = 0, countPerfWo = 0;
 
+    const ulpMetrics: { [ulpName: string]: { realisasiSum: number; realisasiCount: number; seharusnyaSum: number; seharusnyaCount: number; } } = {};
+
     const dataRows = rawRows.slice(1);
     dataRows.forEach(row => {
       if (!row || row.length === 0) return;
 
-      const rowUlp = idxNamaUlp !== -1 ? String(row[idxNamaUlp] || "").toUpperCase() : "";
+      const rowUlp = idxNamaUlp !== -1 ? String(row[idxNamaUlp] || "").toUpperCase().trim() : "";
       const matchesUlp = selectedUlp === 'ALL' || rowUlp.includes(selectedUlp.toUpperCase()) || selectedUlp.toUpperCase().includes(rowUlp);
       if (!matchesUlp) return;
+
+      if (rowUlp) {
+        if (!ulpMetrics[rowUlp]) {
+          ulpMetrics[rowUlp] = {
+            realisasiSum: 0,
+            realisasiCount: 0,
+            seharusnyaSum: 0,
+            seharusnyaCount: 0
+          };
+        }
+      }
 
       // Track Total Skor
       if (idxTotalSkor !== -1) {
@@ -574,14 +587,24 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
 
       // Track Seharusnya
       if (idxJumlahHariSeharusnya !== -1) {
-        sumSeharusnya += parseNum(row[idxJumlahHariSeharusnya]);
+        const val = parseNum(row[idxJumlahHariSeharusnya]);
+        sumSeharusnya += val;
         countSeharusnya++;
+        if (rowUlp && ulpMetrics[rowUlp]) {
+          ulpMetrics[rowUlp].seharusnyaSum += val;
+          ulpMetrics[rowUlp].seharusnyaCount++;
+        }
       }
 
       // Track Realisasi
       if (idxJumlahHariRealisasi !== -1) {
-        sumRealisasi += parseNum(row[idxJumlahHariRealisasi]);
+        const val = parseNum(row[idxJumlahHariRealisasi]);
+        sumRealisasi += val;
         countRealisasi++;
+        if (rowUlp && ulpMetrics[rowUlp]) {
+          ulpMetrics[rowUlp].realisasiSum += val;
+          ulpMetrics[rowUlp].realisasiCount++;
+        }
       }
 
       // Track RCT
@@ -610,9 +633,27 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
     const avgPerfP0 = countPerfP0 > 0 ? (sumPerfP0 / countPerfP0) : 0;
     const avgPerfWo = countPerfWo > 0 ? (sumPerfWo / countPerfWo) : 0;
 
+    // Calculate the averages per ULP
+    let totalUlpAvgRealisasi = 0;
+    let totalUlpAvgSeharusnya = 0;
+    let ulpCountForAvg = 0;
+
+    Object.keys(ulpMetrics).forEach(ulpName => {
+      const u = ulpMetrics[ulpName];
+      const ulpAvgRealisasi = u.realisasiCount > 0 ? (u.realisasiSum / u.realisasiCount) : 0;
+      const ulpAvgSeharusnya = u.seharusnyaCount > 0 ? (u.seharusnyaSum / u.seharusnyaCount) : 0;
+
+      totalUlpAvgRealisasi += ulpAvgRealisasi;
+      totalUlpAvgSeharusnya += ulpAvgSeharusnya;
+      ulpCountForAvg++;
+    });
+
+    const avgRealisasiPerUlp = ulpCountForAvg > 0 ? (totalUlpAvgRealisasi / ulpCountForAvg) : 0;
+    const avgSeharusnyaPerUlp = ulpCountForAvg > 0 ? (totalUlpAvgSeharusnya / ulpCountForAvg) : 0;
+
     // Calculators
     const avgPerforma = Math.min(100, (avgTotalSkor / 15) * 100);
-    const avgKinerjaYo = Math.min(100, avgSeharusnya > 0 ? (avgRealisasi / avgSeharusnya) * 100 : 0);
+    const avgKinerjaYo = Math.min(100, avgSeharusnyaPerUlp > 0 ? (avgRealisasiPerUlp / avgSeharusnyaPerUlp) * 100 : 0);
     const avgHariKerja = Math.min(100, avgRealisasi > 0 ? (((avgRct / avgRealisasi) + 1.5) / 8) * 100 : 0);
     const totalWoPo = Math.min(100, avgPerfP0 + avgPerfWo);
 
