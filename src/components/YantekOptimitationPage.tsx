@@ -46,9 +46,15 @@ interface YantekOptimitationPageProps {
   data: DashboardData;
   onDetailClick?: (type: 'WO' | 'PO', identifier: string, isUlp: boolean, isCctv: boolean) => void;
   selectedMonth?: string;
+  globalSelectedUlp?: string;
 }
 
-export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ data, onDetailClick, selectedMonth }) => {
+export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
+  data, 
+  onDetailClick, 
+  selectedMonth,
+  globalSelectedUlp
+}) => {
   const [selectedUlp, setSelectedUlp] = useState<string>('ALL');
   const [clickedCell, setClickedCell] = useState<{
     ulpKey: string;
@@ -58,6 +64,14 @@ export const YantekOptimitationPage: React.FC<YantekOptimitationPageProps> = ({ 
   } | null>(null);
   const [modalSearchTerm, setModalSearchTerm] = useState<string>('');
   const [officerPage, setOfficerPage] = useState<number>(1);
+
+  useEffect(() => {
+    if (globalSelectedUlp) {
+      setSelectedUlp(globalSelectedUlp.toUpperCase());
+    } else {
+      setSelectedUlp('ALL');
+    }
+  }, [globalSelectedUlp]);
 
   useEffect(() => {
     setOfficerPage(1);

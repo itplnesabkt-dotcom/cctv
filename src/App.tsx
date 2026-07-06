@@ -76,11 +76,151 @@ export default function App() {
   // Memoized filter logic
   const filteredData = React.useMemo(() => {
     if (!data) return null;
+
+    const cleanUlp = (ulp: any) => {
+      const str = String(ulp || "").toUpperCase()
+        .replace(/^POSKO ULP\s+/i, "")
+        .replace(/^ULP\s+/i, "")
+        .replace(/^POSKO\s+/i, "")
+        .replace(/[^A-Z0-9]/g, "")
+        .trim();
+      if (str.includes("PADANG") && str.includes("PANJANG")) return "PADANGPANJANG";
+      if (str.includes("KOTO") && str.includes("TUO")) return "KOTOTUO";
+      return str;
+    };
+
+    const targetUlpClean = selectedUlp ? cleanUlp(selectedUlp) : "";
+
+    // 1. Filter distinct rows
+    const filteredDistinctWoRows = selectedUlp
+      ? data.distinctWoRows.filter(row => cleanUlp(row[data.woIndices.ulp]) === targetUlpClean)
+      : data.distinctWoRows;
+
+    const filteredDistinctPoRows = selectedUlp
+      ? data.distinctPoRows.filter(row => cleanUlp(row[data.poIndices.ulp]) === targetUlpClean)
+      : data.distinctPoRows;
+
+    // 2. Filter raw rows
+    const filteredRawWoRows = selectedUlp
+      ? data.rawWoRows.filter(row => cleanUlp(row[data.woIndices.ulp]) === targetUlpClean)
+      : data.rawWoRows;
+
+    const filteredRawPoRows = selectedUlp
+      ? data.rawPoRows.filter(row => cleanUlp(row[data.poIndices.ulp]) === targetUlpClean)
+      : data.rawPoRows;
+
+    // 3. Filter CCTV Usage
+    const filteredCctvUsage = selectedUlp
+      ? data.cctvUsage.filter(u => cleanUlp(u.ulp) === targetUlpClean)
+      : data.cctvUsage;
+
+    // 4. Recalculate overSla data
+    let filteredOverSla = data.overSla;
+    if (selectedUlp) {
+      const rptValArray = filteredDistinctWoRows.map(row => parseFloat(String(row[data.woIndices.rpt]).replace(",", ".")) || 0);
+      const rctValArray = filteredDistinctWoRows.map(row => parseFloat(String(row[data.woIndices.rct]).replace(",", ".")) || 0);
+
+      const highestRpt = rptValArray.length > 0 ? rptValArray.reduce((max, v) => v > max ? v : max, 0) : 0;
+      const highestRct = rctValArray.length > 0 ? rctValArray.reduce((max, v) => v > max ? v : max, 0) : 0;
+
+      const countRptOver30 = rptValArray.filter(v => v >= 30).length;
+      const countRptOver45 = rptValArray.filter(v => v >= 45).length;
+
+      const avgRpt = rptValArray.length > 0 ? parseFloat((rptValArray.reduce((src, sum) => src + sum, 0) / rptValArray.length).toFixed(1)) : 0;
+      const avgRct = rctValArray.length > 0 ? parseFloat((rctValArray.reduce((src, sum) => src + sum, 0) / rctValArray.length).toFixed(1)) : 0;
+
+      const woOverSlaRptList: any[][] = filteredDistinctWoRows
+        .filter(row => (parseFloat(String(row[data.woIndices.rpt]).replace(",", ".")) || 0) >= 30)
+        .map(row => [
+          row[data.woIndices.noLaporan] || row[0] || "", // No Laporan
+          row[data.woIndices.tglLapor] || "", // Tanggal Lapor
+          row[data.woIndices.name] || "", // Nama Petugas
+          row[data.woIndices.rpt] || "", // RPT
+          row[data.woIndices.rct] || ""  // RCT
+        ]);
+
+      const shiftsCounts: { [shift: string]: number } = { "SHIFT 1": 0, "SHIFT 2": 0, "SHIFT 3": 0 };
+      filteredDistinctWoRows.forEach(row => {
+        let shift = String(row[data.woIndices.shift] || "").trim().toUpperCase();
+        if (shift === "PAGI") shift = "SHIFT 1";
+        if (shift === "SORE") shift = "SHIFT 2";
+        if (shift === "MALAM") shift = "SHIFT 3";
+        if (shift in shiftsCounts) {
+          shiftsCounts[shift]++;
+        }
+      });
+
+      const shiftDistribution = Object.keys(shiftsCounts).map(name => ({
+        name,
+        value: shiftsCounts[name]
+      }));
+
+      const rptOvershootByOfficer: { [name: string]: number } = {};
+      const rctOvershootByOfficer: { [name: string]: number } = {};
+
+      const maxRctInDataSet = rctValArray.length > 0 ? Math.max(...rctValArray) : 0;
+      const rctSlaThreshold = maxRctInDataSet >= 120 ? 120 : (maxRctInDataSet >= 60 ? 60 : 30);
+
+      filteredDistinctWoRows.forEach(row => {
+        const name = String(row[data.woIndices.name] || "").trim();
+        if (!name) return;
+        const rpt = parseFloat(String(row[data.woIndices.rpt]).replace(",", ".")) || 0;
+        const rct = parseFloat(String(row[data.woIndices.rct]).replace(",", ".")) || 0;
+
+        if (rpt >= 30) rptOvershootByOfficer[name] = (rptOvershootByOfficer[name] || 0) + 1;
+        if (rct >= rctSlaThreshold) rctOvershootByOfficer[name] = (rctOvershootByOfficer[name] || 0) + 1;
+      });
+
+      const officerOverSlaRpt = Object.keys(rptOvershootByOfficer).map(name => ({
+        name,
+        count: rptOvershootByOfficer[name]
+      })).sort((a,b) => b.count - a.count).slice(0, 5);
+
+      const officerOverSlaRct = Object.keys(rctOvershootByOfficer).map(name => ({
+        name,
+        count: rctOvershootByOfficer[name]
+      })).sort((a,b) => b.count - a.count).slice(0, 5);
+
+      const ulpOverSlaCount: { [ulp: string]: number } = {};
+      filteredDistinctWoRows.forEach(row => {
+        const u = cleanUlp(row[data.woIndices.ulp]);
+        const rpt = parseFloat(String(row[data.woIndices.rpt]).replace(",", ".")) || 0;
+        if (rpt >= 30) {
+          ulpOverSlaCount[u] = (ulpOverSlaCount[u] || 0) + 1;
+        }
+      });
+
+      const overSlaUlpDistribution = Object.keys(ulpOverSlaCount).map(name => ({
+        name,
+        value: ulpOverSlaCount[name]
+      }));
+
+      filteredOverSla = {
+        totalGangguan: filteredDistinctWoRows.length,
+        highestRpt,
+        highestRct,
+        countRptOver30,
+        countRptOver45,
+        avgRpt,
+        avgRct,
+        woOverSlaRptList,
+        shiftDistribution,
+        officerOverSlaRpt,
+        officerOverSlaRct,
+        ulpDistribution: overSlaUlpDistribution
+      };
+    }
     
     return {
       ...data,
+      distinctWoRows: filteredDistinctWoRows,
+      distinctPoRows: filteredDistinctPoRows,
+      rawWoRows: filteredRawWoRows,
+      rawPoRows: filteredRawPoRows,
+      cctvUsage: filteredCctvUsage,
+      overSla: filteredOverSla,
       ulpPerformance: (selectedUlp 
-        ? data.ulpPerformance.filter(u => u.ulp === selectedUlp)
+        ? data.ulpPerformance.filter(u => cleanUlp(u.ulp) === targetUlpClean)
         : data.ulpPerformance
       ).sort((a, b) => {
         const avgA = (parseFloat(a.persenWo) || 0) + (parseFloat(a.persenPo) || 0);
@@ -88,7 +228,7 @@ export default function App() {
         return avgB - avgA;
       }),
       officerPerformance: (selectedUlp
-        ? data.officerPerformance.filter(o => o.ulp === selectedUlp)
+        ? data.officerPerformance.filter(o => cleanUlp(o.ulp) === targetUlpClean)
         : data.officerPerformance
       ).sort((a, b) => {
         const avgA = (parseFloat(a.persenWo) || 0) + (parseFloat(a.persenPo) || 0);
@@ -99,8 +239,14 @@ export default function App() {
       rating: {
         ...data.rating,
         officerRatings: selectedUlp
-          ? data.rating.officerRatings.filter(o => o.ulp === selectedUlp)
-          : data.rating.officerRatings
+          ? data.rating.officerRatings.filter(o => cleanUlp(o.ulp) === targetUlpClean)
+          : data.rating.officerRatings,
+        ulpRatings: selectedUlp
+          ? data.rating.ulpRatings.filter(u => cleanUlp(u.namaUlp) === targetUlpClean)
+          : data.rating.ulpRatings,
+        kpRatings: selectedUlp
+          ? data.rating.kpRatings.filter(k => cleanUlp(k.ulp) === targetUlpClean)
+          : data.rating.kpRatings
       }
     };
   }, [data, selectedUlp]);
@@ -434,6 +580,7 @@ export default function App() {
                 data={filteredData || data} 
                 onDetailClick={handleDetailClick}
                 selectedMonth={selectedMonth}
+                globalSelectedUlp={selectedUlp}
               />
             ) : (
               <AdminPage anomaliList={data.anomali.anomaliList} vccData={data.vccData} />
