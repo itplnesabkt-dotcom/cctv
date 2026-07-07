@@ -512,6 +512,7 @@ export class GoogleSheetsService {
     const anomUlpIdx = findIndex(anomaliHeaders, ["POSKO ULP", "ULP"], 2);
     const anomReguIdx = findIndex(anomaliHeaders, ["USER REGU"], 3);
     const anomTglIdx = findIndex(anomaliHeaders, ["TANGGAL WO", "Timestamp"], 4);
+    const anomManjiIdx = findIndex(anomaliHeaders, ["MANJI"], 22);
     const anomTypeIdx = findIndex(anomaliHeaders, ["Anomali", "Jenis Anomali"], 8);
     const anomDescIdx = findIndex(anomaliHeaders, ["KETERANGAN ANOMALI", "Deskripsi"], 9);
 
@@ -533,7 +534,13 @@ export class GoogleSheetsService {
     const rawAnomRows = anomaliRows.slice(1).filter(row => {
       if (!row || row.length === 0) return false;
 
-      const tglStr = String(row[anomTglIdx] || "").trim();
+      let tglStr = "";
+      if (anomManjiIdx < row.length) {
+        tglStr = String(row[anomManjiIdx] || "").trim();
+      }
+      if (!tglStr) {
+        tglStr = String(row[anomTglIdx] || "").trim();
+      }
       const rowDate = this.parseDate(tglStr);
       if (!rowDate) return true;
       if (startObj && rowDate < startObj) return false;
@@ -593,7 +600,14 @@ export class GoogleSheetsService {
 
     let latestAnomaliDateObj: Date | null = null;
     fullAnomRows.forEach(row => {
-      const d = this.parseDate(row[anomTglIdx]);
+      let tglStr = "";
+      if (anomManjiIdx < row.length) {
+        tglStr = String(row[anomManjiIdx] || "").trim();
+      }
+      if (!tglStr) {
+        tglStr = String(row[anomTglIdx] || "").trim();
+      }
+      const d = this.parseDate(tglStr);
       if (d) {
         if (!latestAnomaliDateObj || d > latestAnomaliDateObj) {
           latestAnomaliDateObj = d;
@@ -1011,9 +1025,17 @@ export class GoogleSheetsService {
         missingOfficer++;
       }
 
+      let rowDateStr = "";
+      if (anomManjiIdx < row.length) {
+        rowDateStr = String(row[anomManjiIdx] || "").trim();
+      }
+      if (!rowDateStr) {
+        rowDateStr = String(row[anomTglIdx] || "").trim();
+      }
+
       anomaliList.push([
         noLaporan,
-        row[anomTglIdx] || row[0] || "",
+        rowDateStr || row[0] || "",
         officerName,
         cleanUlp,
         type,
