@@ -73,6 +73,23 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
     });
   };
 
+  const handleKPCellClick = (ulpName: string, reguName: string, label: string, list: any[][]) => {
+    // Filter rows where:
+    // row[3] (ULP) matches ulpName
+    // row[6] (REGU) matches reguName
+    const filtered = list.filter(row => {
+      const u = String(row[3] || "").trim().toUpperCase();
+      const r = String(row[6] || "").trim().toUpperCase();
+      return u === ulpName.toUpperCase() && r === reguName.toUpperCase();
+    });
+
+    setModalData({
+      isOpen: true,
+      title: `${ulpName.toUpperCase()} (${reguName.toUpperCase()}) - ${label}`,
+      data: filtered
+    });
+  };
+
   const uniqueRegus = ['Semua Regu', ...[...new Set(rating.officerRatings.map(officer => officer.regu).filter(Boolean))].sort()];
   const uniqueUnits = ['Semua Unit', ...[...new Set(rating.officerRatings.map(officer => officer.ulp).filter(Boolean))].sort()];
   const uniqueKPRegus = ['Semua Regu', ...[...new Set(rating.kpRatings.map(kp => kp.regu).filter(Boolean))].sort()];
@@ -130,15 +147,15 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                     </tr>
                   </thead>
                   <tbody className="text-xs font-black italic uppercase text-brand-primary">
-                    {paginatedModalData.length > 0 ? (
-                      paginatedModalData.map((row, i) => (
-                        <tr key={i} className="hover:bg-gray-50 border-b border-gray-100 transition-colors">
-                          {row.map((cell, j) => (
-                            <td key={j} className="p-4 whitespace-nowrap">{cell}</td>
-                          ))}
-                        </tr>
-                      ))
-                    ) : (
+                      {paginatedModalData.length > 0 ? (
+                        paginatedModalData.map((row, i) => (
+                          <tr key={i} className="hover:bg-gray-50 border-b border-gray-100 transition-colors">
+                            {row.slice(0, 6).map((cell, j) => (
+                              <td key={j} className="p-4 whitespace-nowrap">{cell}</td>
+                            ))}
+                          </tr>
+                        ))
+                      ) : (
                       <tr>
                         <td colSpan={6} className="p-12 text-center text-gray-400">TIDAK ADA DATA DITEMUKAN</td>
                       </tr>
@@ -478,11 +495,36 @@ export const RatingPage: React.FC<RatingPageProps> = ({ data }) => {
                       <tr key={idx} className="border-b border-gray-50 text-[10px] font-bold italic text-brand-primary hover:bg-slate-50 transition-colors group">
                         <td className="px-4 py-[1.8px] text-left border-r border-gray-50 uppercase tracking-tight font-black group-hover:text-blue-600 truncate max-w-[140px]">{kp.namaKp}</td>
                         <td className="px-4 py-[1.8px] text-left border-r border-gray-50 uppercase tracking-tight text-slate-400 font-bold truncate max-w-[100px]">{kp.ulp}</td>
-                        <td className="px-2 py-[1.8px] border-r border-gray-50 text-slate-600 font-black">{kp.totalWoPlnMobile}</td>
-                        <td className="px-2 py-[1.8px] border-r border-gray-50 text-emerald-600 font-black">{kp.rating5}</td>
-                        <td className="px-2 py-[1.8px] border-r border-gray-50 text-amber-600 font-black">{kp.rating34}</td>
-                        <td className="px-2 py-[1.8px] border-r border-gray-50 text-rose-600 font-black">{kp.rating12}</td>
-                        <td className="px-2 py-[1.8px] border-r border-gray-50 bg-slate-50/50 text-slate-400">{kp.noRating}</td>
+                        <td 
+                          onClick={() => handleKPCellClick(kp.ulp, kp.regu, 'TOTAL WO', rating.totalWoPlnMobileList)}
+                          className="px-2 py-[1.8px] border-r border-gray-50 text-slate-600 font-black cursor-pointer hover:underline hover:bg-blue-50/50 transition-all"
+                        >
+                          {kp.totalWoPlnMobile}
+                        </td>
+                        <td 
+                          onClick={() => handleKPCellClick(kp.ulp, kp.regu, 'RATING 5', rating.rating5List)}
+                          className="px-2 py-[1.8px] border-r border-gray-50 text-emerald-600 font-black cursor-pointer hover:underline hover:bg-emerald-50/50 transition-all"
+                        >
+                          {kp.rating5}
+                        </td>
+                        <td 
+                          onClick={() => handleKPCellClick(kp.ulp, kp.regu, 'RATING 3-4', rating.rating34List)}
+                          className="px-2 py-[1.8px] border-r border-gray-50 text-amber-600 font-black cursor-pointer hover:underline hover:bg-amber-50/50 transition-all"
+                        >
+                          {kp.rating34}
+                        </td>
+                        <td 
+                          onClick={() => handleKPCellClick(kp.ulp, kp.regu, 'RATING 1-2', rating.rating12List)}
+                          className="px-2 py-[1.8px] border-r border-gray-50 text-rose-600 font-black cursor-pointer hover:underline hover:bg-rose-50/50 transition-all"
+                        >
+                          {kp.rating12}
+                        </td>
+                        <td 
+                          onClick={() => handleKPCellClick(kp.ulp, kp.regu, 'NO RATING', rating.noRatingList)}
+                          className="px-2 py-[1.8px] border-r border-gray-50 bg-slate-50/50 text-slate-400 font-black cursor-pointer hover:underline hover:bg-slate-200/50 transition-all"
+                        >
+                          {kp.noRating}
+                        </td>
                         <td className="p-0">
                           <div className={`w-full py-[1.8px] flex items-center justify-center font-black text-white text-[10px] ${kp.percentageKomulatif === '100%' ? 'bg-emerald-500' : 'bg-rose-500'}`}>
                             {kp.percentageKomulatif}

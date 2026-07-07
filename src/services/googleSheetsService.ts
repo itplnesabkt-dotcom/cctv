@@ -767,8 +767,8 @@ export class GoogleSheetsService {
     const uniqueWoRowsForRating = Array.from(uniqueWoMap.values());
 
     const plnMobileRows = uniqueWoRowsForRating.filter(row => {
-      const src = String(row[woIndices.source] || "").toLowerCase();
-      return src.includes("mobile");
+      const src = String(row[woIndices.source] || "").trim();
+      return src.toLowerCase() === "pln mobile";
     });
 
     const totalWoPlnMobile = plnMobileRows.length;
@@ -800,7 +800,8 @@ export class GoogleSheetsService {
         officersStr,
         this.cleanUlpName(row[woIndices.ulp]),
         String(row[woIndices.rating] || "").trim() || "-",
-        String(row[woIndices.source] || "").trim()
+        String(row[woIndices.source] || "").trim(),
+        String(row[woIndices.regu] || "REGU ALFA").trim().toUpperCase()
       ];
     };
 
