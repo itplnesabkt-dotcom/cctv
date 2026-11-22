@@ -1,8 +1,71 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import zlib from "zlib";
+import { promisify } from "util";
 import { createServer as createViteServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
+
+const gzipAsync = promisify(zlib.gzip);
+
+interface SheetCacheEntry {
+  csvText: string;
+  gzipBuffer: Buffer;
+  fetchedAt: number;
+}
+
+const SHEET_CACHE_TTL_MS = 60 * 1000;
+const sheetCache = new Map<string, SheetCacheEntry>();
+const inFlightSheetFetches = new Map<string, Promise<SheetCacheEntry>>();
+
+async function fetchUpstreamSheetWithRetries(targetUrl: string): Promise<SheetCacheEntry> {
+  const maxAttempts = 3;
+  let lastError: any = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s covers headers + large body download
+
+    try {
+      const response = await fetch(targetUrl, {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+      });
+
+      if (!response.ok) {
+        lastError = new Error(`HTTP status ${response.status}`);
+        console.warn(`Attempt ${attempt} failed fetching sheets with HTTP ${response.status}. Retrying...`);
+      } else {
+        const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+        const csvText = await response.text();
+        if (contentType.includes("text/html") || csvText.trimStart().startsWith("<!DOCTYPE html") || csvText.trimStart().startsWith("<html")) {
+          lastError = new Error("Upstream returned HTML instead of CSV");
+          console.warn(`Attempt ${attempt} returned HTML instead of CSV. Retrying...`);
+        } else {
+          const gzipBuffer = await gzipAsync(Buffer.from(csvText, "utf8"));
+          return {
+            csvText,
+            gzipBuffer,
+            fetchedAt: Date.now(),
+          };
+        }
+      }
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`Attempt ${attempt} failed with error: ${err.message || err}. Retrying...`);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (attempt < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+
+  throw lastError || new Error("Failed fetching sheets after multiple attempts");
+}
 
 async function startServer() {
   const app = express();
@@ -22,7 +85,7 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-  // Google Sheets CORS Bypass Proxy with robust retry logic
+  // Google Sheets CORS Bypass Proxy with caching, deduplication, retry logic, and gzip compression
   app.get("/api/sheets", async (req, res) => {
     const sheetName = req.query.sheetName as string;
     const customUrl = req.query.customUrl as string;
@@ -38,45 +101,45 @@ async function startServer() {
       return;
     }
 
-    const maxAttempts = 3;
-    let lastError: any = null;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 seconds timeout per attempt
-
-      try {
-        const response = await fetch(targetUrl, {
-          signal: controller.signal,
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-          }
-        });
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          const csvText = await response.text();
-          res.setHeader("Content-Type", "text/csv; charset=utf-8");
-          res.send(csvText);
-          return;
-        } else {
-          lastError = new Error(`HTTP status ${response.status}`);
-          console.warn(`Attempt ${attempt} failed fetching sheets with HTTP ${response.status}. Retrying...`);
-        }
-      } catch (err: any) {
-        clearTimeout(timeoutId);
-        lastError = err;
-        console.warn(`Attempt ${attempt} failed with error: ${err.message || err}. Retrying...`);
+    const sendEntry = (entry: SheetCacheEntry) => {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      const acceptEncoding = String(req.headers["accept-encoding"] || "").toLowerCase();
+      if (acceptEncoding.includes("gzip")) {
+        res.setHeader("Content-Encoding", "gzip");
+        res.setHeader("Vary", "Accept-Encoding");
+        res.send(entry.gzipBuffer);
+      } else {
+        res.send(entry.csvText);
       }
+    };
 
-      // Brief backoff before retry
-      if (attempt < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+    const cached = sheetCache.get(targetUrl);
+    if (cached && Date.now() - cached.fetchedAt < SHEET_CACHE_TTL_MS) {
+      sendEntry(cached);
+      return;
     }
 
-    console.error("All sheet fetch attempts failed. Last error:", lastError);
-    res.status(500).json({ error: lastError?.message || "Internal server error fetching sheets after multiple attempts" });
+    try {
+      let fetchPromise = inFlightSheetFetches.get(targetUrl);
+      if (!fetchPromise) {
+        fetchPromise = fetchUpstreamSheetWithRetries(targetUrl).finally(() => {
+          inFlightSheetFetches.delete(targetUrl);
+        });
+        inFlightSheetFetches.set(targetUrl, fetchPromise);
+      }
+
+      const freshEntry = await fetchPromise;
+      sheetCache.set(targetUrl, freshEntry);
+      sendEntry(freshEntry);
+    } catch (err: any) {
+      console.error("All sheet fetch attempts failed. Last error:", err);
+      if (cached) {
+        console.warn(`Serving stale cached sheet data for ${sheetName || customUrl}`);
+        sendEntry(cached);
+        return;
+      }
+      res.status(500).json({ error: err?.message || "Internal server error fetching sheets after multiple attempts" });
+    }
   });
 
   // Google Apps Script Proxy to prevent CORS/fetch problems on any browser

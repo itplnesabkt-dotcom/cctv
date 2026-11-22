@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import { DashboardData, OfficerPerformance, ULPPerformance, CCTVUsage, OverSLAData, RatingData, AnomaliData, OfficerRating, KPRating, ULPRating } from '../types';
+import { DashboardData, OfficerPerformance, ULPPerformance, ReguPerformance, CCTVUsage, OverSLAData, RatingData, AnomaliData, OfficerRating, KPRating, ULPRating } from '../types';
 
 export class GoogleSheetsService {
   private static SPREADSHEET_ID = "1lMwrFdf-VKmmWWZ_UU_XGkvhUWvH-t16ZL4lSjDbPRU";
@@ -10,6 +10,8 @@ export class GoogleSheetsService {
   private static poCache: any[][] | null = null;
   private static anomaliCache: any[][] | null = null;
   private static vccDataCache: any[][] | null = null;
+  private static reguCache: any[][] | null = null;
+  private static petugasCache: any[][] | null = null;
   private static lastCacheFetch: number = 0;
 
   /**
@@ -37,20 +39,33 @@ export class GoogleSheetsService {
     try {
       // Fetch and parse sheets from the official Spreadsheet ID by default
       const now = Date.now();
-      if (!this.woCache || !this.poCache || !this.anomaliCache || !this.vccDataCache || (now - this.lastCacheFetch > this.CACHE_DURATION_MS)) {
+      if (!this.woCache || !this.poCache || !this.anomaliCache || !this.vccDataCache || !this.reguCache || !this.petugasCache || (now - this.lastCacheFetch > this.CACHE_DURATION_MS)) {
         console.log("Fetching live sheets from Spreadsheet ID: " + this.SPREADSHEET_ID);
-        const [rawWo, rawPo, rawAnomali, rawVcc] = await Promise.all([
-          this.fetchSheetDataRaw("WO"),
-          this.fetchSheetDataRaw("PO"),
-          this.fetchSheetDataRaw("ANOMALI").catch(() => [] as any[][]),
-          this.fetchSheetDataRaw("VCC_DATA").catch(() => [] as any[][])
+        const [rawWo, rawPo, rawAnomali, rawVcc, rawRegu, rawPetugas] = await Promise.all([
+          this.fetchSheetDataRaw("WO").catch(err => {
+            if (this.woCache && this.woCache.length > 1) {
+              console.warn("Failed refreshing WO sheet, retaining existing live cache:", err);
+              return this.woCache;
+            }
+            throw err;
+          }),
+          this.fetchSheetDataRaw("PO").catch(err => {
+            console.warn("Failed fetching PO sheet, using cached or empty fallback:", err);
+            return this.poCache || ([] as any[][]);
+          }),
+          this.fetchSheetDataRaw("ANOMALI").catch(() => this.anomaliCache || ([] as any[][])),
+          this.fetchSheetDataRaw("VCC_DATA").catch(() => this.vccDataCache || ([] as any[][])),
+          this.fetchSheetDataRaw("REGU").catch(() => this.reguCache || ([] as any[][])),
+          this.fetchSheetDataRaw("PETUGAS").catch(() => this.petugasCache || ([] as any[][]))
         ]);
 
         if (rawWo && rawWo.length > 1) {
           this.woCache = rawWo;
-          this.poCache = rawPo && rawPo.length > 1 ? rawPo : [["No Tugas", "Tgl Catat", "Posko", "Personil Yantek", "CCTV", "Status"]];
-          this.anomaliCache = rawAnomali && rawAnomali.length > 1 ? rawAnomali : [["Timestamp", "NOMOR WO YANTEK DENGAN CCTV", "POSKO ULP", "USER REGU", "TANGGAL WO", "Anomali", "KETERANGAN ANOMALI"]];
-          this.vccDataCache = rawVcc && rawVcc.length > 1 ? rawVcc : [];
+          this.poCache = rawPo && rawPo.length > 1 ? rawPo : (this.poCache && this.poCache.length > 1 ? this.poCache : [["No Tugas", "Tgl Catat", "Posko", "Personil Yantek", "CCTV", "Status"]]);
+          this.anomaliCache = rawAnomali && rawAnomali.length > 1 ? rawAnomali : (this.anomaliCache && this.anomaliCache.length > 1 ? this.anomaliCache : [["Timestamp", "NOMOR WO YANTEK DENGAN CCTV", "POSKO ULP", "USER REGU", "TANGGAL WO", "Anomali", "KETERANGAN ANOMALI"]]);
+          this.vccDataCache = rawVcc && rawVcc.length > 1 ? rawVcc : (this.vccDataCache || []);
+          this.reguCache = rawRegu && rawRegu.length > 1 ? rawRegu : (this.reguCache || []);
+          this.petugasCache = rawPetugas && rawPetugas.length > 1 ? rawPetugas : (this.petugasCache || []);
           this.lastCacheFetch = now;
         }
       }
@@ -63,7 +78,9 @@ export class GoogleSheetsService {
           startDate, 
           endDate, 
           selectedUlp,
-          this.vccDataCache || []
+          this.vccDataCache || [],
+          this.reguCache || [],
+          this.petugasCache || []
         );
       }
     } catch (err: any) {
@@ -79,19 +96,32 @@ export class GoogleSheetsService {
    */
   private static async fetchSheetDataRaw(sheetName: string): Promise<any[][]> {
     const url = `/api/sheets?sheetName=${encodeURIComponent(sheetName)}`;
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Google Sheet fetch via proxy failed with status ${response.status}`);
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Google Sheet fetch via proxy failed with status ${response.status}`);
+        }
+        const csvText = await response.text();
+        return await new Promise<any[][]>((resolve, reject) => {
+          Papa.parse(csvText, {
+            header: false,
+            skipEmptyLines: true,
+            complete: (results) => resolve(results.data as any[][]),
+            error: (err) => reject(err)
+          });
+        });
+      } catch (err: any) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 800));
+        }
+      }
     }
-    const csvText = await response.text();
-    return new Promise((resolve, reject) => {
-      Papa.parse(csvText, {
-        header: false,
-        skipEmptyLines: true,
-        complete: (results) => resolve(results.data as any[][]),
-        error: (err) => reject(err)
-      });
-    });
+
+    throw lastError || new Error("Google Sheet fetch via proxy failed");
   }
 
   /**
@@ -252,7 +282,9 @@ export class GoogleSheetsService {
     startDateStr: string,
     endDateStr: string,
     selectedUlp: string,
-    vccRows?: any[][]
+    vccRows?: any[][],
+    reguRows?: any[][],
+    petugasRows?: any[][]
   ): DashboardData {
     const woHeaders = woRows[0] || [];
     const findIndex = (headers: string[], targets: string[], fallback: number) => {
@@ -261,6 +293,59 @@ export class GoogleSheetsService {
         if (idx !== -1) return idx;
       }
       return fallback;
+    };
+
+    // Build REGU (id -> name) and PETUGAS (name -> reguName via reguId) lookup maps
+    const reguHeaders = (reguRows && reguRows[0]) || [];
+    const reguIdIdx = findIndex(reguHeaders, ["id", "reguid"], 0);
+    const reguNameIdx = findIndex(reguHeaders, ["name", "nama", "regu"], 1);
+    const reguIdToNameMap = new Map<string, string>();
+    const reguNormToNameMap = new Map<string, string>();
+    if (reguRows && reguRows.length > 1) {
+      reguRows.slice(1).forEach(r => {
+        if (!r) return;
+        const id = String(r[reguIdIdx] || "").trim().toUpperCase();
+        const nm = String(r[reguNameIdx] || "").replace(/\s+/g, " ").trim().toUpperCase();
+        if (id && nm) {
+          reguIdToNameMap.set(id, nm);
+          reguNormToNameMap.set(nm.replace(/[^A-Z0-9]/g, ""), nm);
+        }
+      });
+    }
+
+    const petugasHeaders = (petugasRows && petugasRows[0]) || [];
+    const petNameIdx = findIndex(petugasHeaders, ["name", "nama", "nama petugas"], 1);
+    const petReguIdIdx = findIndex(petugasHeaders, ["reguid", "regu_id", "regu"], 3);
+    const petugasToReguMap = new Map<string, string>();
+    const petugasCompactToReguMap = new Map<string, string>();
+    if (petugasRows && petugasRows.length > 1) {
+      petugasRows.slice(1).forEach(r => {
+        if (!r) return;
+        const pName = String(r[petNameIdx] || "").replace(/\s+/g, " ").trim().toUpperCase();
+        const rId = String(r[petReguIdIdx] || "").trim().toUpperCase();
+        if (pName && rId) {
+          const resolvedRegu = reguIdToNameMap.get(rId) || rId;
+          petugasToReguMap.set(pName, resolvedRegu);
+          petugasCompactToReguMap.set(pName.replace(/\s+/g, ""), resolvedRegu);
+        }
+      });
+    }
+
+    const resolveOfficerRegu = (officerName: string, rowReguFallback?: string): string => {
+      const norm = String(officerName || "").replace(/\s+/g, " ").trim().toUpperCase();
+      if (norm) {
+        const direct = petugasToReguMap.get(norm);
+        if (direct) return direct;
+        const compact = petugasCompactToReguMap.get(norm.replace(/\s+/g, ""));
+        if (compact) return compact;
+        const asRegu = reguNormToNameMap.get(norm.replace(/[^A-Z0-9]/g, ""));
+        if (asRegu) return asRegu;
+      }
+      const fb = String(rowReguFallback || "").replace(/\s+/g, " ").trim().toUpperCase();
+      if (fb) {
+        return reguNormToNameMap.get(fb.replace(/[^A-Z0-9]/g, "")) || fb;
+      }
+      return "-";
     };
 
     // Resilient Indices Finder
@@ -385,16 +470,19 @@ export class GoogleSheetsService {
     });
 
     // Grouping & calculations for OFFICER PERFORMANCE (Kinerja Petugas) - KEEP RAW AS REQUESTED
-    const officerMap: { [name: string]: { ulp: string; woTotal: number; woCctv: number; poTotal: number; poCctv: number } } = {};
+    const officerMap: { [name: string]: { ulp: string; regu: string; woTotal: number; woCctv: number; poTotal: number; poCctv: number } } = {};
 
     dataWoRows.forEach(row => {
       const name = String(row[woIndices.name] || "").trim();
       if (!name) return;
       const cleanUlp = this.cleanUlpName(row[woIndices.ulp]);
+      const regu = resolveOfficerRegu(name, row[woIndices.regu]);
       const isCctv = checkCctv(row[woIndices.cctv]);
 
       if (!officerMap[name]) {
-        officerMap[name] = { ulp: cleanUlp, woTotal: 0, woCctv: 0, poTotal: 0, poCctv: 0 };
+        officerMap[name] = { ulp: cleanUlp, regu, woTotal: 0, woCctv: 0, poTotal: 0, poCctv: 0 };
+      } else if (officerMap[name].regu === "-" && regu !== "-") {
+        officerMap[name].regu = regu;
       }
       officerMap[name].woTotal++;
       if (isCctv) officerMap[name].woCctv++;
@@ -404,10 +492,13 @@ export class GoogleSheetsService {
       const name = String(row[poIndices.name] || "").trim();
       if (!name) return;
       const cleanUlp = this.cleanUlpName(row[poIndices.ulp]);
+      const regu = resolveOfficerRegu(name, row[poIndices.regu]);
       const isCctv = checkCctv(row[poIndices.cctv]);
 
       if (!officerMap[name]) {
-        officerMap[name] = { ulp: cleanUlp, woTotal: 0, woCctv: 0, poTotal: 0, poCctv: 0 };
+        officerMap[name] = { ulp: cleanUlp, regu, woTotal: 0, woCctv: 0, poTotal: 0, poCctv: 0 };
+      } else if (officerMap[name].regu === "-" && regu !== "-") {
+        officerMap[name].regu = regu;
       }
       officerMap[name].poTotal++;
       if (isCctv) officerMap[name].poCctv++;
@@ -419,6 +510,7 @@ export class GoogleSheetsService {
       const persenPo = o.poTotal > 0 ? ((o.poCctv / o.poTotal) * 100).toFixed(1) + "%" : "100%";
       return {
         name,
+        regu: o.regu,
         ulp: o.ulp,
         jumlahWoTotal: o.woTotal,
         totalWoPakaiCctv: o.woCctv,
@@ -478,6 +570,75 @@ export class GoogleSheetsService {
         persenWo,
         jumlahPoTotal: u.poTotal,
         totalPoPakaiCctv: u.poCctv,
+        persenPo,
+        persenPenggunaanCctv
+      };
+    });
+
+    // Grouping & calculations for REGU PERFORMANCE using DISTINCT (JobId, Regu)
+    const reguPerfMap: { [reguName: string]: { ulp: string; woTotal: number; woCctv: number; poTotal: number; poCctv: number } } = {};
+    const woReguJobMap = new Map<string, { regu: string; ulp: string; hasCctv: boolean }>();
+    dataWoRows.forEach((row, idx) => {
+      const officerName = String(row[woIndices.name] || "").trim();
+      const regu = resolveOfficerRegu(officerName, row[woIndices.regu]);
+      const cleanUlp = this.cleanUlpName(row[woIndices.ulp]);
+      const rawNoLapo = String(row[woIndices.noLaporan] || "").trim();
+      const jobKey = `${rawNoLapo ? rawNoLapo.toUpperCase() : `EMPTY_WO_${idx}`}__${regu}`;
+      const isCctv = checkCctv(row[woIndices.cctv]);
+      const existing = woReguJobMap.get(jobKey);
+      if (!existing) {
+        woReguJobMap.set(jobKey, { regu, ulp: cleanUlp, hasCctv: isCctv });
+      } else if (isCctv) {
+        existing.hasCctv = true;
+      }
+    });
+    woReguJobMap.forEach(({ regu, ulp, hasCctv }) => {
+      if (!reguPerfMap[regu]) {
+        reguPerfMap[regu] = { ulp, woTotal: 0, woCctv: 0, poTotal: 0, poCctv: 0 };
+      }
+      reguPerfMap[regu].woTotal++;
+      if (hasCctv) reguPerfMap[regu].woCctv++;
+    });
+
+    const poReguJobMap = new Map<string, { regu: string; ulp: string; hasCctv: boolean }>();
+    dataPoRows.forEach((row, idx) => {
+      const officerName = String(row[poIndices.name] || "").trim();
+      const regu = resolveOfficerRegu(officerName, row[poIndices.regu]);
+      const cleanUlp = this.cleanUlpName(row[poIndices.ulp]);
+      const rawNoTugas = String(row[poIndices.noTugas] || "").trim();
+      const jobKey = `${rawNoTugas ? rawNoTugas.toUpperCase() : `EMPTY_PO_${idx}`}__${regu}`;
+      const isCctv = checkCctv(row[poIndices.cctv]);
+      const existing = poReguJobMap.get(jobKey);
+      if (!existing) {
+        poReguJobMap.set(jobKey, { regu, ulp: cleanUlp, hasCctv: isCctv });
+      } else if (isCctv) {
+        existing.hasCctv = true;
+      }
+    });
+    poReguJobMap.forEach(({ regu, ulp, hasCctv }) => {
+      if (!reguPerfMap[regu]) {
+        reguPerfMap[regu] = { ulp, woTotal: 0, woCctv: 0, poTotal: 0, poCctv: 0 };
+      }
+      reguPerfMap[regu].poTotal++;
+      if (hasCctv) reguPerfMap[regu].poCctv++;
+    });
+
+    const reguPerformance: ReguPerformance[] = Object.keys(reguPerfMap).map(regu => {
+      const r = reguPerfMap[regu];
+      const persenWo = r.woTotal > 0 ? ((r.woCctv / r.woTotal) * 100).toFixed(1) + "%" : "100%";
+      const persenPo = r.poTotal > 0 ? ((r.poCctv / r.poTotal) * 100).toFixed(1) + "%" : "100%";
+      const totalCctv = r.woCctv + r.poCctv;
+      const totalJobs = r.woTotal + r.poTotal;
+      const persenPenggunaanCctv = totalJobs > 0 ? ((totalCctv / totalJobs) * 100).toFixed(1) + "%" : "100%";
+
+      return {
+        regu,
+        ulp: r.ulp,
+        jumlahWoTotal: r.woTotal,
+        totalWoPakaiCctv: r.woCctv,
+        persenWo,
+        jumlahPoTotal: r.poTotal,
+        totalPoPakaiCctv: r.poCctv,
         persenPo,
         persenPenggunaanCctv
       };
@@ -1091,6 +1252,7 @@ export class GoogleSheetsService {
     return {
       officerPerformance,
       ulpPerformance,
+      reguPerformance,
       cctvUsage,
       summary,
       allUlps: standardUlps,
@@ -1307,6 +1469,23 @@ export class GoogleSheetsService {
 
     const poHeaders = ["No", "UID/UIW", "UP3", "Posko", "No Tugas", "Jenis Penugasan", "Keterangan", "Petugas Catat", "Nama Regu", "No Referensi", "Personil Yantek", "Shif", "Check In Petugas", "Tgl Catat", "Tgl Pengerjaan", "Tgl Nyala Sementara", "Tgl Nyala", "Tgl Selesai", "Durasi WO Penugasan Khusus", "Check Out Petugas", "Status", "Selesai", "Keterangan Selesai", "", "CCTV", "TGL"];
 
-    return this.compileDashboardDataFromRaw(rawWoRows, rawPoRows, [["Timestamp", "NOMOR WO YANTEK DENGAN CCTV", "POSKO ULP", "USER REGU", "TANGGAL WO", "Anomali", "KETERANGAN ANOMALI"]], startDateStr, endDateStr, selectedUlp);
+    const mockReguSet = new Map<string, string>();
+    const mockReguRows: any[][] = [["id", "name", "poskoid"]];
+    const mockPetugasRows: any[][] = [["id", "name", "ulpId", "reguId"]];
+    let rCounter = 1;
+    let pCounter = 1;
+    ulps.forEach((ulp, uIdx) => {
+      (officersByUlp[ulp] || []).forEach(off => {
+        const rk = `${ulp}__${off.regu}`;
+        if (!mockReguSet.has(rk)) {
+          const rid = `R${rCounter++}`;
+          mockReguSet.set(rk, rid);
+          mockReguRows.push([rid, off.regu, `p${uIdx + 1}`]);
+        }
+        mockPetugasRows.push([`k${pCounter++}`, off.name, `u${uIdx + 1}`, mockReguSet.get(rk)!]);
+      });
+    });
+
+    return this.compileDashboardDataFromRaw(rawWoRows, rawPoRows, [["Timestamp", "NOMOR WO YANTEK DENGAN CCTV", "POSKO ULP", "USER REGU", "TANGGAL WO", "Anomali", "KETERANGAN ANOMALI"]], startDateStr, endDateStr, selectedUlp, undefined, mockReguRows, mockPetugasRows);
   }
 }

@@ -14,6 +14,7 @@ export interface CCTVUsage {
 export interface DashboardData {
   officerPerformance: OfficerPerformance[];
   ulpPerformance: ULPPerformance[];
+  reguPerformance: ReguPerformance[];
   cctvUsage: CCTVUsage[];
   summary: {
     totalBaca: number;
@@ -47,8 +48,8 @@ export interface DashboardData {
   distinctPoRows: any[][];
   woHeaders: string[];
   poHeaders: string[];
-  woIndices: { name: number; ulp: number; cctv: number; tglLapor: number; tglPengerjaan: number; tglSelesai: number; source: number; reporter: number; shift: number; rpt: number; rct: number };
-  poIndices: { name: number; ulp: number; cctv: number };
+  woIndices: { name: number; ulp: number; cctv: number; tglLapor: number; tglPengerjaan: number; tglSelesai: number; source: number; reporter: number; shift: number; rpt: number; rct: number; regu?: number; noLaporan?: number };
+  poIndices: { name: number; ulp: number; cctv: number; regu?: number; noTugas?: number };
 }
 
 export interface AnomaliData {
@@ -134,6 +135,7 @@ export interface OfficerRating {
 
 export interface OfficerPerformance {
   name: string;
+  regu: string;
   ulp: string;
   jumlahWoTotal: number;
   totalWoPakaiCctv: number;
@@ -144,6 +146,18 @@ export interface OfficerPerformance {
 }
 
 export interface ULPPerformance {
+  ulp: string;
+  jumlahWoTotal: number;
+  totalWoPakaiCctv: number;
+  persenWo: string;
+  jumlahPoTotal: number;
+  totalPoPakaiCctv: number;
+  persenPo: string;
+  persenPenggunaanCctv: string;
+}
+
+export interface ReguPerformance {
+  regu: string;
   ulp: string;
   jumlahWoTotal: number;
   totalWoPakaiCctv: number;

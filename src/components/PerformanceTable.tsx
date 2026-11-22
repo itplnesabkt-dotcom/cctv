@@ -42,6 +42,7 @@ export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, onDeta
           <thead className="sticky top-0 z-10 bg-gray-50 shadow-sm">
             <tr className="border-b border-gray-100 h-[36px]">
               <th className="px-2 text-[10px] font-black text-black-600 tracking-widest uppercase whitespace-nowrap">NAMA PETUGAS</th>
+              <th className="px-2 text-[10px] font-black text-black-600 tracking-widest uppercase text-center whitespace-nowrap">REGU</th>
               <th className="px-2 text-[10px] font-black text-black-600 tracking-widest uppercase text-center">ULP</th>
               <th className="px-2 text-[10px] font-black text-black-600 tracking-widest uppercase text-center">WO TOTAL</th>
               <th className="px-2 text-[10px] font-black text-brand-primary tracking-widest uppercase text-center">WO CCTV</th>
@@ -61,6 +62,7 @@ export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, onDeta
               return (
                 <tr key={i} className="table-row h-[40px] border-b border-gray-50/50 last:border-0">
                   <td className="px-2 font-black text-brand-primary uppercase text-[10px] whitespace-nowrap">{item.name}</td>
+                  <td className="px-2 text-center font-bold text-slate-600 uppercase text-[9px] whitespace-nowrap">{item.regu || '-'}</td>
                   <td className="px-2 text-center font-bold text-gray-500 uppercase text-[9px]">{item.ulp}</td>
                   <td 
                     onClick={() => onDetailClick('WO', item.name, false)}

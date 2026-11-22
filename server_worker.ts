@@ -44,7 +44,7 @@ export default {
 
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 seconds timeout per attempt
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds timeout covering body read
 
         try {
           const response = await fetch(targetUrl, {
@@ -53,29 +53,47 @@ export default {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
           });
-          clearTimeout(timeoutId);
 
           if (response.ok) {
+            const contentType = String(response.headers.get("content-type") || "").toLowerCase();
             const csvText = await response.text();
-            return new Response(csvText, {
-              headers: {
-                "Content-Type": "text/csv; charset=utf-8",
-                "Access-Control-Allow-Origin": "*",
-              },
-            });
+            if (contentType.includes("text/html") || csvText.trimStart().startsWith("<!DOCTYPE html") || csvText.trimStart().startsWith("<html")) {
+              lastError = new Error("Upstream returned HTML instead of CSV");
+              console.warn(`Attempt ${attempt} returned HTML instead of CSV. Retrying...`);
+            } else {
+              const acceptEncoding = String(request.headers.get("accept-encoding") || "").toLowerCase();
+              if (acceptEncoding.includes("gzip") && typeof CompressionStream !== "undefined") {
+                const stream = new Blob([csvText]).stream().pipeThrough(new CompressionStream("gzip"));
+                return new Response(stream, {
+                  headers: {
+                    "Content-Type": "text/csv; charset=utf-8",
+                    "Content-Encoding": "gzip",
+                    "Vary": "Accept-Encoding",
+                    "Access-Control-Allow-Origin": "*",
+                  },
+                });
+              }
+              return new Response(csvText, {
+                headers: {
+                  "Content-Type": "text/csv; charset=utf-8",
+                  "Access-Control-Allow-Origin": "*",
+                },
+              });
+            }
           } else {
             lastError = new Error(`HTTP status ${response.status}`);
             console.warn(`Attempt ${attempt} failed fetching sheets with HTTP ${response.status}. Retrying...`);
           }
         } catch (err: any) {
-          clearTimeout(timeoutId);
           lastError = err;
           console.warn(`Attempt ${attempt} failed with error: ${err.message || err}. Retrying...`);
+        } finally {
+          clearTimeout(timeoutId);
         }
 
         // Brief backoff before retry
         if (attempt < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
         }
       }
 

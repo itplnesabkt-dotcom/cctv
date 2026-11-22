@@ -7,6 +7,7 @@ import { POUP3Card } from './components/POUP3Card.tsx';
 import { ULPPOStatsCard } from './components/ULPPOStatsCard.tsx';
 import { PerformanceTable } from './components/PerformanceTable.tsx';
 import { ULPPerformanceTable } from './components/ULPPerformanceTable.tsx';
+import { ReguPerformanceTable } from './components/ReguPerformanceTable.tsx';
 import { DetailModal } from './components/DetailModal.tsx';
 import { OverSLAPage } from './components/OverSLAPage.tsx';
 import { RatingPage } from './components/RatingPage.tsx';
@@ -235,6 +236,14 @@ export default function App() {
         const avgB = (parseFloat(b.persenWo) || 0) + (parseFloat(b.persenPo) || 0);
         return avgB - avgA;
       }),
+      reguPerformance: (selectedUlp
+        ? (data.reguPerformance || []).filter(r => cleanUlp(r.ulp) === targetUlpClean)
+        : (data.reguPerformance || [])
+      ).sort((a, b) => {
+        const avgA = (parseFloat(a.persenWo) || 0) + (parseFloat(a.persenPo) || 0);
+        const avgB = (parseFloat(b.persenWo) || 0) + (parseFloat(b.persenPo) || 0);
+        return avgB - avgA;
+      }),
       summary: data.summary,
       rating: {
         ...data.rating,
@@ -264,7 +273,7 @@ export default function App() {
     return data.allUlps || [];
   }, [data]);
 
-  const handleDetailClick = (type: 'WO' | 'PO', identifier: string, isUlp: boolean, isCctv: boolean) => {
+  const handleDetailClick = (type: 'WO' | 'PO', identifier: string, isUlp: boolean, isCctv: boolean, isRegu = false) => {
     if (!data) return;
 
     const headers = type === 'WO' ? data.woHeaders : data.poHeaders;
@@ -289,48 +298,97 @@ export default function App() {
       return str;
     };
 
-    // Build officer to ULP map for fallback using standardized clean names
+    const checkCctvVal = (val: any) => {
+      const s = String(val || "").toUpperCase();
+      if (!s || s === "-" || s.includes("TIDAK")) return false;
+      return s.includes("CCTV") || s.includes("PAKAI") || s.includes("YA") || s.includes("VIDEO") || s.includes("FOTO") || s.includes("ADA");
+    };
+
+    // Build officer to ULP and Regu maps using standardized clean names
     const officerToCleanUlpMap = new Map<string, string>();
+    const officerToReguMap = new Map<string, string>();
     data.officerPerformance.forEach(op => {
       officerToCleanUlpMap.set(cleanName(op.name), cleanUlp(op.ulp));
+      officerToReguMap.set(cleanName(op.name), String(op.regu || "-").trim().toUpperCase());
     });
 
     let filteredRows = rawRows;
 
-    // 1. Filter by CCTV if requested
-    if (isCctv) {
-      filteredRows = filteredRows.filter(row => {
-        if (indices.cctv === -1 || indices.cctv >= row.length) return false;
-        const cctvVal = String(row[indices.cctv] || '').toUpperCase();
-        return cctvVal.includes('CCTV');
-      });
-    }
+    if (isRegu) {
+      const targetRegu = String(identifier || "").trim().toUpperCase();
+      const targetReguCompact = targetRegu.replace(/[^A-Z0-9]/g, "");
+      const idIdx = type === 'WO' ? (data.woIndices.noLaporan ?? 13) : (data.poIndices.noTugas ?? 4);
+      const reguFallbackIdx = type === 'WO' ? (data.woIndices.regu ?? 9) : (data.poIndices.regu ?? 8);
 
-    // 2. Filter by ULP or Officer
-    if (identifier === "UP3" || identifier === "ALL") {
-      setModalTitle(`DETAIL DATA ${type}${isCctv ? ' (CCTV)' : ''} - UP3 BUKITTINGGI`);
-    } else if (isUlp) {
-      const targetUlpClean = cleanUlp(identifier);
-      filteredRows = filteredRows.filter(row => {
-        let rowUlp = "";
-        if (indices.ulp !== -1 && indices.ulp < row.length && row[indices.ulp]) {
-          rowUlp = cleanUlp(row[indices.ulp]);
-        } else if (indices.name !== -1 && indices.name < row.length && row[indices.name]) {
-          // Fallback to officer mapping
-          const rowNameClean = cleanName(row[indices.name]);
-          rowUlp = officerToCleanUlpMap.get(rowNameClean) || "";
+      const matchingRaw = rawRows.filter(row => {
+        const officerKey = indices.name !== -1 && indices.name < row.length ? cleanName(row[indices.name]) : "";
+        let rowRegu = officerKey ? officerToReguMap.get(officerKey) : undefined;
+        if (!rowRegu && reguFallbackIdx !== -1 && reguFallbackIdx < row.length) {
+          rowRegu = String(row[reguFallbackIdx] || "").trim().toUpperCase();
         }
-        return rowUlp === targetUlpClean;
+        if (!rowRegu) return false;
+        return rowRegu === targetRegu || rowRegu.replace(/[^A-Z0-9]/g, "") === targetReguCompact;
       });
-      setModalTitle(`DETAIL DATA ${type}${isCctv ? ' (CCTV)' : ''} - ULP: ${identifier}`);
+
+      // Deduplicate by No Laporan / No Tugas so row count matches REKAPITULASI KINERJA PER REGU
+      const jobMap = new Map<string, any[]>();
+      matchingRaw.forEach((row, idx) => {
+        const jobId = String(row[idIdx] || "").trim();
+        const key = jobId ? jobId.toUpperCase() : `EMPTY_${idx}`;
+        if (!jobMap.has(key)) jobMap.set(key, []);
+        jobMap.get(key)!.push(row);
+      });
+
+      const distinctReguRows: any[][] = [];
+      jobMap.forEach(rows => {
+        const hasCctv = rows.some(r => indices.cctv !== -1 && checkCctvVal(r[indices.cctv]));
+        const rep = [...rows[0]];
+        if (indices.cctv !== -1) {
+          rep[indices.cctv] = hasCctv ? (type === 'WO' ? "CCTV YA" : "YA") : "TIDAK";
+        }
+        if (!isCctv || hasCctv) {
+          distinctReguRows.push(rep);
+        }
+      });
+
+      filteredRows = distinctReguRows;
+      setModalTitle(`DETAIL DATA ${type}${isCctv ? ' (CCTV)' : ''} - REGU: ${identifier}`);
     } else {
-      const targetNameClean = cleanName(identifier);
-      filteredRows = filteredRows.filter(row => {
-        if (indices.name === -1 || indices.name >= row.length) return false;
-        const rowNameClean = cleanName(row[indices.name]);
-        return rowNameClean === targetNameClean;
-      });
-      setModalTitle(`DETAIL DATA ${type}${isCctv ? ' (CCTV)' : ''} - PETUGAS: ${identifier}`);
+      // 1. Filter by CCTV if requested
+      if (isCctv) {
+        filteredRows = filteredRows.filter(row => {
+          if (indices.cctv === -1 || indices.cctv >= row.length) return false;
+          const cctvVal = String(row[indices.cctv] || '').toUpperCase();
+          return cctvVal.includes('CCTV');
+        });
+      }
+
+      // 2. Filter by ULP or Officer
+      if (identifier === "UP3" || identifier === "ALL") {
+        setModalTitle(`DETAIL DATA ${type}${isCctv ? ' (CCTV)' : ''} - UP3 BUKITTINGGI`);
+      } else if (isUlp) {
+        const targetUlpClean = cleanUlp(identifier);
+        filteredRows = filteredRows.filter(row => {
+          let rowUlp = "";
+          if (indices.ulp !== -1 && indices.ulp < row.length && row[indices.ulp]) {
+            rowUlp = cleanUlp(row[indices.ulp]);
+          } else if (indices.name !== -1 && indices.name < row.length && row[indices.name]) {
+            // Fallback to officer mapping
+            const rowNameClean = cleanName(row[indices.name]);
+            rowUlp = officerToCleanUlpMap.get(rowNameClean) || "";
+          }
+          return rowUlp === targetUlpClean;
+        });
+        setModalTitle(`DETAIL DATA ${type}${isCctv ? ' (CCTV)' : ''} - ULP: ${identifier}`);
+      } else {
+        const targetNameClean = cleanName(identifier);
+        filteredRows = filteredRows.filter(row => {
+          if (indices.name === -1 || indices.name >= row.length) return false;
+          const rowNameClean = cleanName(row[indices.name]);
+          return rowNameClean === targetNameClean;
+        });
+        setModalTitle(`DETAIL DATA ${type}${isCctv ? ' (CCTV)' : ''} - PETUGAS: ${identifier}`);
+      }
     }
 
     setModalHeaders(headers);
@@ -550,6 +608,10 @@ export default function App() {
                   <ULPPerformanceTable 
                     data={filteredData?.ulpPerformance || []} 
                     onDetailClick={(type, ulp, isCctv) => handleDetailClick(type, ulp, true, isCctv)}
+                  />
+                  <ReguPerformanceTable 
+                    data={filteredData?.reguPerformance || []} 
+                    onDetailClick={(type, regu, isCctv) => handleDetailClick(type, regu, false, isCctv, true)}
                   />
                 </div>
 
