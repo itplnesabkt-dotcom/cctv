@@ -9,7 +9,7 @@ interface ULPPerformanceTableProps {
 
 export const ULPPerformanceTable: React.FC<ULPPerformanceTableProps> = ({ data, onDetailClick }) => {
   return (
-    <div className="dashboard-card flex flex-col mt-6">
+    <div className="dashboard-card flex flex-col">
       <div className="bg-indigo-500 p-4 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="bg-brand-accent p-1.5 rounded text-brand-primary">
