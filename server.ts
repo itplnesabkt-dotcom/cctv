@@ -1,22 +1,45 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import zlib from "zlib";
-import { promisify } from "util";
 import { createServer as createViteServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
 
-const gzipAsync = promisify(zlib.gzip);
+const PAGE_SIZE = 30000;
+const SHEET_CACHE_TTL_MS = 60 * 1000;
 
 interface SheetCacheEntry {
   csvText: string;
-  gzipBuffer: Buffer;
+  records: string[];
   fetchedAt: number;
 }
 
-const SHEET_CACHE_TTL_MS = 60 * 1000;
 const sheetCache = new Map<string, SheetCacheEntry>();
 const inFlightSheetFetches = new Map<string, Promise<SheetCacheEntry>>();
+
+function splitCsvRecords(csvText: string): string[] {
+  const records: string[] = [];
+  let start = 0;
+  let inQuotes = false;
+  for (let i = 0; i < csvText.length; i++) {
+    const ch = csvText.charCodeAt(i);
+    if (ch === 34) {
+      if (inQuotes && i + 1 < csvText.length && csvText.charCodeAt(i + 1) === 34) {
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === 10 && !inQuotes) {
+      const rec = csvText.slice(start, i).replace(/\r$/, "");
+      if (rec.trim().length > 0) records.push(rec);
+      start = i + 1;
+    }
+  }
+  if (start < csvText.length) {
+    const rec = csvText.slice(start).replace(/\r$/, "");
+    if (rec.trim().length > 0) records.push(rec);
+  }
+  return records;
+}
 
 async function fetchUpstreamSheetWithRetries(targetUrl: string): Promise<SheetCacheEntry> {
   const maxAttempts = 3;
@@ -44,10 +67,10 @@ async function fetchUpstreamSheetWithRetries(targetUrl: string): Promise<SheetCa
           lastError = new Error("Upstream returned HTML instead of CSV");
           console.warn(`Attempt ${attempt} returned HTML instead of CSV. Retrying...`);
         } else {
-          const gzipBuffer = await gzipAsync(Buffer.from(csvText, "utf8"));
+          const records = splitCsvRecords(csvText);
           return {
             csvText,
-            gzipBuffer,
+            records,
             fetchedAt: Date.now(),
           };
         }
@@ -85,10 +108,12 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-  // Google Sheets CORS Bypass Proxy with caching, deduplication, retry logic, and gzip compression
+  // Google Sheets CORS Bypass Proxy with caching, deduplication, retry logic, and safe CSV pagination
   app.get("/api/sheets", async (req, res) => {
     const sheetName = req.query.sheetName as string;
     const customUrl = req.query.customUrl as string;
+    const paged = req.query.paged === "1";
+    const page = Math.max(0, parseInt(String(req.query.page || "0"), 10) || 0);
 
     let targetUrl = "";
     if (customUrl) {
@@ -103,11 +128,19 @@ async function startServer() {
 
     const sendEntry = (entry: SheetCacheEntry) => {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      const acceptEncoding = String(req.headers["accept-encoding"] || "").toLowerCase();
-      if (acceptEncoding.includes("gzip")) {
-        res.setHeader("Content-Encoding", "gzip");
-        res.setHeader("Vary", "Accept-Encoding");
-        res.send(entry.gzipBuffer);
+      if (paged && entry.records.length > 0) {
+        const dataCount = Math.max(0, entry.records.length - 1);
+        const totalPages = Math.max(1, Math.ceil(dataCount / PAGE_SIZE));
+        res.setHeader("X-Total-Pages", String(totalPages));
+        res.setHeader("Access-Control-Expose-Headers", "X-Total-Pages");
+        if (page >= totalPages) {
+          res.send(entry.records[0]);
+          return;
+        }
+        const startIdx = 1 + page * PAGE_SIZE;
+        const endIdx = startIdx + PAGE_SIZE;
+        const pageCsv = [entry.records[0], ...entry.records.slice(startIdx, endIdx)].join("\n");
+        res.send(pageCsv);
       } else {
         res.send(entry.csvText);
       }

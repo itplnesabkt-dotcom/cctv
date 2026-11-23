@@ -4,6 +4,42 @@ interface Env {
   };
 }
 
+const PAGE_SIZE = 30000;
+const SHEET_CACHE_TTL_MS = 60 * 1000;
+
+interface WorkerSheetCacheEntry {
+  csvText: string;
+  records: string[];
+  fetchedAt: number;
+}
+
+const workerSheetCache = new Map<string, WorkerSheetCacheEntry>();
+
+function splitCsvRecords(csvText: string): string[] {
+  const records: string[] = [];
+  let start = 0;
+  let inQuotes = false;
+  for (let i = 0; i < csvText.length; i++) {
+    const ch = csvText.charCodeAt(i);
+    if (ch === 34) {
+      if (inQuotes && i + 1 < csvText.length && csvText.charCodeAt(i + 1) === 34) {
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === 10 && !inQuotes) {
+      const rec = csvText.slice(start, i).replace(/\r$/, "");
+      if (rec.trim().length > 0) records.push(rec);
+      start = i + 1;
+    }
+  }
+  if (start < csvText.length) {
+    const rec = csvText.slice(start).replace(/\r$/, "");
+    if (rec.trim().length > 0) records.push(rec);
+  }
+  return records;
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: any): Promise<Response> {
     const url = new URL(request.url);
@@ -18,10 +54,12 @@ export default {
       });
     }
 
-    // 2. Route: /api/sheets with robust retry logic
+    // 2. Route: /api/sheets with caching, retry logic, and safe plain-text CSV pagination
     if (url.pathname === "/api/sheets") {
       const sheetName = url.searchParams.get("sheetName");
       const customUrl = url.searchParams.get("customUrl");
+      const paged = url.searchParams.get("paged") === "1";
+      const page = Math.max(0, parseInt(url.searchParams.get("page") || "0", 10) || 0);
 
       let targetUrl = "";
       if (customUrl) {
@@ -37,6 +75,38 @@ export default {
             "Access-Control-Allow-Origin": "*"
           },
         });
+      }
+
+      const buildCsvResponse = (entry: WorkerSheetCacheEntry) => {
+        if (paged && entry.records.length > 0) {
+          const dataCount = Math.max(0, entry.records.length - 1);
+          const totalPages = Math.max(1, Math.ceil(dataCount / PAGE_SIZE));
+          let body = entry.records[0];
+          if (page < totalPages) {
+            const startIdx = 1 + page * PAGE_SIZE;
+            const endIdx = startIdx + PAGE_SIZE;
+            body = [entry.records[0], ...entry.records.slice(startIdx, endIdx)].join("\n");
+          }
+          return new Response(body, {
+            headers: {
+              "Content-Type": "text/csv; charset=utf-8",
+              "X-Total-Pages": String(totalPages),
+              "Access-Control-Expose-Headers": "X-Total-Pages",
+              "Access-Control-Allow-Origin": "*",
+            },
+          });
+        }
+        return new Response(entry.csvText, {
+          headers: {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      };
+
+      const cached = workerSheetCache.get(targetUrl);
+      if (cached && Date.now() - cached.fetchedAt < SHEET_CACHE_TTL_MS) {
+        return buildCsvResponse(cached);
       }
 
       const maxAttempts = 3;
@@ -61,24 +131,13 @@ export default {
               lastError = new Error("Upstream returned HTML instead of CSV");
               console.warn(`Attempt ${attempt} returned HTML instead of CSV. Retrying...`);
             } else {
-              const acceptEncoding = String(request.headers.get("accept-encoding") || "").toLowerCase();
-              if (acceptEncoding.includes("gzip") && typeof CompressionStream !== "undefined") {
-                const stream = new Blob([csvText]).stream().pipeThrough(new CompressionStream("gzip"));
-                return new Response(stream, {
-                  headers: {
-                    "Content-Type": "text/csv; charset=utf-8",
-                    "Content-Encoding": "gzip",
-                    "Vary": "Accept-Encoding",
-                    "Access-Control-Allow-Origin": "*",
-                  },
-                });
-              }
-              return new Response(csvText, {
-                headers: {
-                  "Content-Type": "text/csv; charset=utf-8",
-                  "Access-Control-Allow-Origin": "*",
-                },
-              });
+              const entry: WorkerSheetCacheEntry = {
+                csvText,
+                records: splitCsvRecords(csvText),
+                fetchedAt: Date.now(),
+              };
+              workerSheetCache.set(targetUrl, entry);
+              return buildCsvResponse(entry);
             }
           } else {
             lastError = new Error(`HTTP status ${response.status}`);
@@ -95,6 +154,10 @@ export default {
         if (attempt < maxAttempts) {
           await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
         }
+      }
+
+      if (cached) {
+        return buildCsvResponse(cached);
       }
 
       console.error("All sheet fetch attempts failed. Last error:", lastError);

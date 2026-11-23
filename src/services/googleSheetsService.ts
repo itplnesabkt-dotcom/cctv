@@ -94,25 +94,48 @@ export class GoogleSheetsService {
   /**
    * Fetches raw sheet CSV via server proxy and parses using Papa.parse
    */
+  private static async parseCsvPage(url: string): Promise<{ rows: any[][]; totalPages: number }> {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Google Sheet fetch via proxy failed with status ${response.status}`);
+    }
+    const csvText = await response.text();
+    if (!csvText || csvText.charCodeAt(0) === 0x1f || csvText.startsWith("\uFFFD") || csvText.trimStart().startsWith("<!DOCTYPE html") || csvText.trimStart().startsWith("<html")) {
+      throw new Error("Received invalid or binary response instead of CSV");
+    }
+    const totalPages = Math.max(1, parseInt(response.headers.get("X-Total-Pages") || "1", 10) || 1);
+    const rows = await new Promise<any[][]>((resolve, reject) => {
+      Papa.parse(csvText, {
+        header: false,
+        skipEmptyLines: true,
+        complete: (results) => resolve(results.data as any[][]),
+        error: (err) => reject(err)
+      });
+    });
+    return { rows, totalPages };
+  }
+
   private static async fetchSheetDataRaw(sheetName: string): Promise<any[][]> {
-    const url = `/api/sheets?sheetName=${encodeURIComponent(sheetName)}`;
+    const baseUrl = `/api/sheets?sheetName=${encodeURIComponent(sheetName)}&paged=1`;
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`Google Sheet fetch via proxy failed with status ${response.status}`);
+        const firstPage = await this.parseCsvPage(`${baseUrl}&page=0`);
+        if (firstPage.totalPages <= 1) {
+          return firstPage.rows;
         }
-        const csvText = await response.text();
-        return await new Promise<any[][]>((resolve, reject) => {
-          Papa.parse(csvText, {
-            header: false,
-            skipEmptyLines: true,
-            complete: (results) => resolve(results.data as any[][]),
-            error: (err) => reject(err)
-          });
-        });
+        const remainingIndices = Array.from({ length: firstPage.totalPages - 1 }, (_, i) => i + 1);
+        const remainingPages = await Promise.all(
+          remainingIndices.map(p => this.parseCsvPage(`${baseUrl}&page=${p}`))
+        );
+        const combined = [...firstPage.rows];
+        for (const page of remainingPages) {
+          if (page.rows.length > 1) {
+            combined.push(...page.rows.slice(1));
+          }
+        }
+        return combined;
       } catch (err: any) {
         lastError = err instanceof Error ? err : new Error(String(err));
         if (attempt < 2) {
