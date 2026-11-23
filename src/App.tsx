@@ -19,13 +19,23 @@ import { DashboardData } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Loader2 } from 'lucide-react';
 
+const formatDateForQuery = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function App() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedUlp, setSelectedUlp] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [startDate, setStartDate] = useState(() => {
+    const now = new Date();
+    return formatDateForQuery(new Date(now.getFullYear(), now.getMonth(), 1));
+  });
+  const [endDate, setEndDate] = useState(() => formatDateForQuery(new Date()));
   const [activeTab, setActiveTab] = useState<'CCTV' | 'ANOMALI' | 'OVER_SLA' | 'RATING' | 'YANTEK_OPTIMITATION' | 'ADMIN'>('CCTV');
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
@@ -58,21 +68,6 @@ export default function App() {
       handleMonthChange(selectedMonth);
     }
   }, [activeTab]);
-
-  const formatDateForQuery = (date: Date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  // Set default date range to current month on initial load
-  useEffect(() => {
-    const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    setStartDate(formatDateForQuery(firstDay));
-    setEndDate(formatDateForQuery(now));
-  }, []);
 
   // Memoized filter logic
   const filteredData = React.useMemo(() => {
@@ -109,6 +104,14 @@ export default function App() {
     const filteredRawPoRows = selectedUlp
       ? data.rawPoRows.filter(row => cleanUlp(row[data.poIndices.ulp]) === targetUlpClean)
       : data.rawPoRows;
+
+    const filteredAllWoRows = selectedUlp
+      ? (data.allWoRows || data.rawWoRows).filter(row => cleanUlp(row[data.woIndices.ulp]) === targetUlpClean)
+      : (data.allWoRows || data.rawWoRows);
+
+    const filteredAllPoRows = selectedUlp
+      ? (data.allPoRows || data.rawPoRows).filter(row => cleanUlp(row[data.poIndices.ulp]) === targetUlpClean)
+      : (data.allPoRows || data.rawPoRows);
 
     // 3. Filter CCTV Usage
     const filteredCctvUsage = selectedUlp
@@ -218,6 +221,8 @@ export default function App() {
       distinctPoRows: filteredDistinctPoRows,
       rawWoRows: filteredRawWoRows,
       rawPoRows: filteredRawPoRows,
+      allWoRows: filteredAllWoRows,
+      allPoRows: filteredAllPoRows,
       cctvUsage: filteredCctvUsage,
       overSla: filteredOverSla,
       ulpPerformance: (selectedUlp 
@@ -278,8 +283,8 @@ export default function App() {
 
     const headers = type === 'WO' ? data.woHeaders : data.poHeaders;
     const rawRows = type === 'WO' 
-      ? (isUlp ? data.distinctWoRows : data.rawWoRows) 
-      : (isUlp ? data.distinctPoRows : data.rawPoRows);
+      ? (isUlp ? data.distinctWoRows : (data.allWoRows || data.rawWoRows)) 
+      : (isUlp ? data.distinctPoRows : (data.allPoRows || data.rawPoRows));
     const indices = type === 'WO' ? data.woIndices : data.poIndices;
 
     const cleanName = (name: any) => {
@@ -321,12 +326,18 @@ export default function App() {
       const reguFallbackIdx = type === 'WO' ? (data.woIndices.regu ?? 9) : (data.poIndices.regu ?? 8);
 
       const matchingRaw = rawRows.filter(row => {
-        const officerKey = indices.name !== -1 && indices.name < row.length ? cleanName(row[indices.name]) : "";
-        let rowRegu = officerKey ? officerToReguMap.get(officerKey) : undefined;
-        if (!rowRegu && reguFallbackIdx !== -1 && reguFallbackIdx < row.length) {
-          rowRegu = String(row[reguFallbackIdx] || "").trim().toUpperCase();
+        let rowRegu = "";
+        if (reguFallbackIdx !== -1 && reguFallbackIdx < row.length) {
+          const rawVal = String(row[reguFallbackIdx] || "").trim().toUpperCase();
+          if (rawVal && rawVal !== "-") {
+            rowRegu = rawVal;
+          }
         }
-        if (!rowRegu) return false;
+        if (!rowRegu) {
+          const officerKey = indices.name !== -1 && indices.name < row.length ? cleanName(row[indices.name]) : "";
+          rowRegu = (officerKey && officerToReguMap.get(officerKey)) || "";
+        }
+        if (!rowRegu || rowRegu === "-") return false;
         return rowRegu === targetRegu || rowRegu.replace(/[^A-Z0-9]/g, "") === targetReguCompact;
       });
 
@@ -502,7 +513,7 @@ export default function App() {
     };
 
     loadData(!data);
-    const interval = setInterval(() => loadData(false), 30000);
+    const interval = setInterval(() => loadData(false), 300000);
     return () => clearInterval(interval);
   }, [startDate, endDate, selectedUlp]);
 

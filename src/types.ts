@@ -44,6 +44,8 @@ export interface DashboardData {
   vccData?: any[][];
   rawWoRows: any[][];
   rawPoRows: any[][];
+  allWoRows?: any[][];
+  allPoRows?: any[][];
   distinctWoRows: any[][];
   distinctPoRows: any[][];
   woHeaders: string[];

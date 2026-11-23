@@ -4,8 +4,9 @@ import { DashboardData, OfficerPerformance, ULPPerformance, ReguPerformance, CCT
 export class GoogleSheetsService {
   private static SPREADSHEET_ID = "1lMwrFdf-VKmmWWZ_UU_XGkvhUWvH-t16ZL4lSjDbPRU";
 
-  // Cache configuration (1-minute memory caching)
-  private static CACHE_DURATION_MS = 60000;
+  // Cache configuration (5-minute memory cache for transactional sheets, 30-minute for master tables)
+  private static CACHE_DURATION_MS = 5 * 60 * 1000;
+  private static MASTER_CACHE_DURATION_MS = 30 * 60 * 1000;
   private static woCache: any[][] | null = null;
   private static poCache: any[][] | null = null;
   private static anomaliCache: any[][] | null = null;
@@ -13,6 +14,114 @@ export class GoogleSheetsService {
   private static reguCache: any[][] | null = null;
   private static petugasCache: any[][] | null = null;
   private static lastCacheFetch: number = 0;
+  private static lastMasterCacheFetch: number = 0;
+  private static rateLimitCooldownUntil: number = 0;
+  private static inFlightRefreshPromise: Promise<void> | null = null;
+  private static inFlightSheetPromises = new Map<string, Promise<any[][]>>();
+
+  private static async refreshLiveSheetsIfNeeded(): Promise<void> {
+    if (this.inFlightRefreshPromise) {
+      return this.inFlightRefreshPromise;
+    }
+
+    const now = Date.now();
+    const needsDynamic =
+      !this.woCache ||
+      !this.poCache ||
+      !this.anomaliCache ||
+      !this.vccDataCache ||
+      (now - this.lastCacheFetch > this.CACHE_DURATION_MS);
+
+    const needsMaster =
+      !this.reguCache ||
+      this.reguCache.length <= 1 ||
+      !this.petugasCache ||
+      this.petugasCache.length <= 1 ||
+      (now - this.lastMasterCacheFetch > this.MASTER_CACHE_DURATION_MS);
+
+    if (!needsDynamic && !needsMaster) {
+      return;
+    }
+
+    // If we are in a server-reported 429 cooldown and already have live data (including master sheets), retain it silently
+    if (
+      now < this.rateLimitCooldownUntil &&
+      this.woCache &&
+      this.woCache.length > 1 &&
+      this.reguCache &&
+      this.reguCache.length > 1 &&
+      this.petugasCache &&
+      this.petugasCache.length > 1
+    ) {
+      return;
+    }
+
+    const runRefresh = async () => {
+      console.log("Fetching live sheets from Spreadsheet ID: " + this.SPREADSHEET_ID);
+
+      const safeFetchSheet = async (sheetName: string, existingCache: any[][] | null, required = false): Promise<any[][]> => {
+        if (Date.now() < this.rateLimitCooldownUntil) {
+          if (existingCache && existingCache.length > 1) return existingCache;
+          if (!required) return [];
+        }
+        try {
+          return await this.fetchSheetDataRaw(sheetName);
+        } catch (err: any) {
+          if (existingCache && existingCache.length > 1) {
+            console.warn(`Failed refreshing ${sheetName} sheet, retaining existing live cache:`, err?.message || err);
+            return existingCache;
+          }
+          if (required) throw err;
+          console.warn(`Failed fetching ${sheetName} sheet, using empty fallback:`, err?.message || err);
+          return [];
+        }
+      };
+
+      let rawWo: any[][] = this.woCache || [];
+      let rawPo: any[][] = this.poCache || [];
+      let rawAnomali: any[][] = this.anomaliCache || [];
+      let rawVcc: any[][] = this.vccDataCache || [];
+      let rawRegu: any[][] = this.reguCache || [];
+      let rawPetugas: any[][] = this.petugasCache || [];
+
+      // Fetch tiny master lookup sheets (REGU & PETUGAS) FIRST so officer regu mapping is always populated
+      if (needsMaster) {
+        [rawRegu, rawPetugas] = await Promise.all([
+          safeFetchSheet("REGU", this.reguCache),
+          safeFetchSheet("PETUGAS", this.petugasCache),
+        ]);
+        if (rawRegu.length > 1) this.reguCache = rawRegu;
+        if (rawPetugas.length > 1) this.petugasCache = rawPetugas;
+        if (this.reguCache && this.reguCache.length > 1 && this.petugasCache && this.petugasCache.length > 1) {
+          this.lastMasterCacheFetch = Date.now();
+        }
+      }
+
+      if (needsDynamic) {
+        [rawWo, rawAnomali] = await Promise.all([
+          safeFetchSheet("WO", this.woCache, true),
+          safeFetchSheet("ANOMALI", this.anomaliCache),
+        ]);
+        [rawPo, rawVcc] = await Promise.all([
+          safeFetchSheet("PO", this.poCache),
+          safeFetchSheet("VCC_DATA", this.vccDataCache),
+        ]);
+
+        if (rawWo && rawWo.length > 1) {
+          this.woCache = rawWo;
+          this.poCache = rawPo && rawPo.length > 1 ? rawPo : (this.poCache && this.poCache.length > 1 ? this.poCache : [["No Tugas", "Tgl Catat", "Posko", "Personil Yantek", "CCTV", "Status"]]);
+          this.anomaliCache = rawAnomali && rawAnomali.length > 1 ? rawAnomali : (this.anomaliCache && this.anomaliCache.length > 1 ? this.anomaliCache : [["Timestamp", "NOMOR WO YANTEK DENGAN CCTV", "POSKO ULP", "USER REGU", "TANGGAL WO", "Anomali", "KETERANGAN ANOMALI"]]);
+          this.vccDataCache = rawVcc && rawVcc.length > 1 ? rawVcc : (this.vccDataCache || []);
+          this.lastCacheFetch = Date.now();
+        }
+      }
+    };
+
+    this.inFlightRefreshPromise = runRefresh().finally(() => {
+      this.inFlightRefreshPromise = null;
+    });
+    return this.inFlightRefreshPromise;
+  }
 
   /**
    * Fetches data for the dashboard.
@@ -37,38 +146,7 @@ export class GoogleSheetsService {
     }
 
     try {
-      // Fetch and parse sheets from the official Spreadsheet ID by default
-      const now = Date.now();
-      if (!this.woCache || !this.poCache || !this.anomaliCache || !this.vccDataCache || !this.reguCache || !this.petugasCache || (now - this.lastCacheFetch > this.CACHE_DURATION_MS)) {
-        console.log("Fetching live sheets from Spreadsheet ID: " + this.SPREADSHEET_ID);
-        const [rawWo, rawPo, rawAnomali, rawVcc, rawRegu, rawPetugas] = await Promise.all([
-          this.fetchSheetDataRaw("WO").catch(err => {
-            if (this.woCache && this.woCache.length > 1) {
-              console.warn("Failed refreshing WO sheet, retaining existing live cache:", err);
-              return this.woCache;
-            }
-            throw err;
-          }),
-          this.fetchSheetDataRaw("PO").catch(err => {
-            console.warn("Failed fetching PO sheet, using cached or empty fallback:", err);
-            return this.poCache || ([] as any[][]);
-          }),
-          this.fetchSheetDataRaw("ANOMALI").catch(() => this.anomaliCache || ([] as any[][])),
-          this.fetchSheetDataRaw("VCC_DATA").catch(() => this.vccDataCache || ([] as any[][])),
-          this.fetchSheetDataRaw("REGU").catch(() => this.reguCache || ([] as any[][])),
-          this.fetchSheetDataRaw("PETUGAS").catch(() => this.petugasCache || ([] as any[][]))
-        ]);
-
-        if (rawWo && rawWo.length > 1) {
-          this.woCache = rawWo;
-          this.poCache = rawPo && rawPo.length > 1 ? rawPo : (this.poCache && this.poCache.length > 1 ? this.poCache : [["No Tugas", "Tgl Catat", "Posko", "Personil Yantek", "CCTV", "Status"]]);
-          this.anomaliCache = rawAnomali && rawAnomali.length > 1 ? rawAnomali : (this.anomaliCache && this.anomaliCache.length > 1 ? this.anomaliCache : [["Timestamp", "NOMOR WO YANTEK DENGAN CCTV", "POSKO ULP", "USER REGU", "TANGGAL WO", "Anomali", "KETERANGAN ANOMALI"]]);
-          this.vccDataCache = rawVcc && rawVcc.length > 1 ? rawVcc : (this.vccDataCache || []);
-          this.reguCache = rawRegu && rawRegu.length > 1 ? rawRegu : (this.reguCache || []);
-          this.petugasCache = rawPetugas && rawPetugas.length > 1 ? rawPetugas : (this.petugasCache || []);
-          this.lastCacheFetch = now;
-        }
-      }
+      await this.refreshLiveSheetsIfNeeded();
 
       if (this.woCache && this.woCache.length > 1) {
         return this.compileDashboardDataFromRaw(
@@ -84,7 +162,7 @@ export class GoogleSheetsService {
         );
       }
     } catch (err: any) {
-      console.error("Failed compiling live sheet data, falling back to mock generator:", err?.stack || err);
+      console.warn("Live sheet fetch unavailable, using fallback dataset:", err?.message || err);
     }
 
     // Default Fallback
@@ -97,7 +175,15 @@ export class GoogleSheetsService {
   private static async parseCsvPage(url: string): Promise<{ rows: any[][]; totalPages: number }> {
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`Google Sheet fetch via proxy failed with status ${response.status}`);
+      if (response.status === 429) {
+        const retryAfterRaw = response.headers.get("Retry-After");
+        const retrySec = retryAfterRaw ? parseInt(retryAfterRaw, 10) : 30;
+        const cooldownMs = (!isNaN(retrySec) && retrySec > 0 ? retrySec : 30) * 1000;
+        this.rateLimitCooldownUntil = Math.max(this.rateLimitCooldownUntil, Date.now() + cooldownMs);
+      }
+      const err: any = new Error(`Google Sheet fetch via proxy failed with status ${response.status}`);
+      err.status = response.status;
+      throw err;
     }
     const csvText = await response.text();
     if (!csvText || csvText.charCodeAt(0) === 0x1f || csvText.startsWith("\uFFFD") || csvText.trimStart().startsWith("<!DOCTYPE html") || csvText.trimStart().startsWith("<html")) {
@@ -116,35 +202,49 @@ export class GoogleSheetsService {
   }
 
   private static async fetchSheetDataRaw(sheetName: string): Promise<any[][]> {
-    const baseUrl = `/api/sheets?sheetName=${encodeURIComponent(sheetName)}&paged=1`;
-    let lastError: Error | null = null;
+    const existing = this.inFlightSheetPromises.get(sheetName);
+    if (existing) return existing;
 
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        const firstPage = await this.parseCsvPage(`${baseUrl}&page=0`);
-        if (firstPage.totalPages <= 1) {
-          return firstPage.rows;
-        }
-        const remainingIndices = Array.from({ length: firstPage.totalPages - 1 }, (_, i) => i + 1);
-        const remainingPages = await Promise.all(
-          remainingIndices.map(p => this.parseCsvPage(`${baseUrl}&page=${p}`))
-        );
-        const combined = [...firstPage.rows];
-        for (const page of remainingPages) {
-          if (page.rows.length > 1) {
-            combined.push(...page.rows.slice(1));
+    const task = (async () => {
+      const baseUrl = `/api/sheets?sheetName=${encodeURIComponent(sheetName)}&paged=1`;
+      let lastError: any = null;
+
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const firstPage = await this.parseCsvPage(`${baseUrl}&page=0`);
+          if (firstPage.totalPages <= 1) {
+            return firstPage.rows;
+          }
+          const remainingIndices = Array.from({ length: firstPage.totalPages - 1 }, (_, i) => i + 1);
+          const remainingPages = await Promise.all(
+            remainingIndices.map(p => this.parseCsvPage(`${baseUrl}&page=${p}`))
+          );
+          const combined = [...firstPage.rows];
+          for (const page of remainingPages) {
+            if (page.rows.length > 1) {
+              combined.push(...page.rows.slice(1));
+            }
+          }
+          return combined;
+        } catch (err: any) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+          // Never immediately retry a 429 rate-limit or 504 upstream timeout
+          if (err?.status === 429 || err?.status === 504) {
+            throw lastError;
+          }
+          if (attempt < 2) {
+            await new Promise(resolve => setTimeout(resolve, 1200));
           }
         }
-        return combined;
-      } catch (err: any) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-        if (attempt < 2) {
-          await new Promise(resolve => setTimeout(resolve, 800));
-        }
       }
-    }
 
-    throw lastError || new Error("Google Sheet fetch via proxy failed");
+      throw lastError || new Error("Google Sheet fetch via proxy failed");
+    })().finally(() => {
+      this.inFlightSheetPromises.delete(sheetName);
+    });
+
+    this.inFlightSheetPromises.set(sheetName, task);
+    return task;
   }
 
   /**
@@ -312,13 +412,13 @@ export class GoogleSheetsService {
     const woHeaders = woRows[0] || [];
     const findIndex = (headers: string[], targets: string[], fallback: number) => {
       for (const t of targets) {
-        const idx = headers.findIndex(h => String(h || "").trim().toLowerCase() === t.toLowerCase());
+        const idx = headers.findIndex(h => String(h || "").replace(/^\uFEFF/, "").trim().toLowerCase() === t.toLowerCase());
         if (idx !== -1) return idx;
       }
       return fallback;
     };
 
-    // Build REGU (id -> name) and PETUGAS (name -> reguName via reguId) lookup maps
+    // Build REGU (id -> name) and PETUGAS (name -> reguId -> REGU.name) lookup maps
     const reguHeaders = (reguRows && reguRows[0]) || [];
     const reguIdIdx = findIndex(reguHeaders, ["id", "reguid"], 0);
     const reguNameIdx = findIndex(reguHeaders, ["name", "nama", "regu"], 1);
@@ -341,34 +441,45 @@ export class GoogleSheetsService {
     const petReguIdIdx = findIndex(petugasHeaders, ["reguid", "regu_id", "regu"], 3);
     const petugasToReguMap = new Map<string, string>();
     const petugasCompactToReguMap = new Map<string, string>();
+    const petugasAlphaNumToReguMap = new Map<string, string>();
     if (petugasRows && petugasRows.length > 1) {
       petugasRows.slice(1).forEach(r => {
         if (!r) return;
         const pName = String(r[petNameIdx] || "").replace(/\s+/g, " ").trim().toUpperCase();
         const rId = String(r[petReguIdIdx] || "").trim().toUpperCase();
         if (pName && rId) {
-          const resolvedRegu = reguIdToNameMap.get(rId) || rId;
-          petugasToReguMap.set(pName, resolvedRegu);
-          petugasCompactToReguMap.set(pName.replace(/\s+/g, ""), resolvedRegu);
+          const resolvedRegu = reguIdToNameMap.get(rId) || reguNormToNameMap.get(rId.replace(/[^A-Z0-9]/g, ""));
+          if (resolvedRegu) {
+            petugasToReguMap.set(pName, resolvedRegu);
+            petugasCompactToReguMap.set(pName.replace(/\s+/g, ""), resolvedRegu);
+            petugasAlphaNumToReguMap.set(pName.replace(/[^A-Z0-9]/g, ""), resolvedRegu);
+          }
         }
       });
     }
 
-    const resolveOfficerRegu = (officerName: string, rowReguFallback?: string): string => {
+    const normalizeRowRegu = (rawRegu: any): string => {
+      const clean = String(rawRegu || "").replace(/\s+/g, " ").trim().toUpperCase();
+      if (!clean || clean === "-") return "";
+      return clean;
+    };
+
+    const resolveOfficerFromPetugas = (officerName: string): string => {
       const norm = String(officerName || "").replace(/\s+/g, " ").trim().toUpperCase();
-      if (norm) {
-        const direct = petugasToReguMap.get(norm);
-        if (direct) return direct;
-        const compact = petugasCompactToReguMap.get(norm.replace(/\s+/g, ""));
-        if (compact) return compact;
-        const asRegu = reguNormToNameMap.get(norm.replace(/[^A-Z0-9]/g, ""));
-        if (asRegu) return asRegu;
-      }
-      const fb = String(rowReguFallback || "").replace(/\s+/g, " ").trim().toUpperCase();
-      if (fb) {
-        return reguNormToNameMap.get(fb.replace(/[^A-Z0-9]/g, "")) || fb;
-      }
+      if (!norm) return "-";
+      const direct = petugasToReguMap.get(norm);
+      if (direct) return direct;
+      const compact = petugasCompactToReguMap.get(norm.replace(/\s+/g, ""));
+      if (compact) return compact;
+      const alphaNum = petugasAlphaNumToReguMap.get(norm.replace(/[^A-Z0-9]/g, ""));
+      if (alphaNum) return alphaNum;
       return "-";
+    };
+
+    const resolveOfficerRegu = (officerName: string, rowReguRaw?: any): string => {
+      const rowRegu = normalizeRowRegu(rowReguRaw);
+      if (rowRegu) return rowRegu;
+      return resolveOfficerFromPetugas(officerName);
     };
 
     // Resilient Indices Finder
@@ -492,14 +603,28 @@ export class GoogleSheetsService {
       distinctPoRows.push(representative);
     });
 
-    // Grouping & calculations for OFFICER PERFORMANCE (Kinerja Petugas) - KEEP RAW AS REQUESTED
+    // Non-empty date-filtered WO/PO rows for Officer & Regu performance (includes ALL Regus from Nama Regu column)
+    const allFilteredWoRows = rawFilteredWoRows.filter(row => {
+      const hasName = woIndices.name !== -1 && woIndices.name < row.length && String(row[woIndices.name] || "").trim() !== "";
+      const hasRegu = woIndices.regu !== -1 && woIndices.regu < row.length && String(row[woIndices.regu] || "").trim() !== "";
+      return hasName || hasRegu;
+    });
+
+    const allFilteredPoRows = rawFilteredPoRows.filter(row => {
+      const hasName = poIndices.name !== -1 && poIndices.name < row.length && String(row[poIndices.name] || "").trim() !== "";
+      const hasRegu = poIndices.regu !== -1 && poIndices.regu < row.length && String(row[poIndices.regu] || "").trim() !== "";
+      return hasName || hasRegu;
+    });
+
+    // Grouping & calculations for OFFICER PERFORMANCE (Kinerja Petugas) - ALL REGUS FROM WO/PO NAMA REGU
     const officerMap: { [name: string]: { ulp: string; regu: string; woTotal: number; woCctv: number; poTotal: number; poCctv: number } } = {};
 
-    dataWoRows.forEach(row => {
-      const name = String(row[woIndices.name] || "").trim();
+    allFilteredWoRows.forEach(row => {
+      const name = String(row[woIndices.name] || "").replace(/\s+/g, " ").trim();
       if (!name) return;
       const cleanUlp = this.cleanUlpName(row[woIndices.ulp]);
-      const regu = resolveOfficerRegu(name, row[woIndices.regu]);
+      const rowRegu = woIndices.regu !== -1 && woIndices.regu < row.length ? row[woIndices.regu] : undefined;
+      const regu = resolveOfficerRegu(name, rowRegu);
       const isCctv = checkCctv(row[woIndices.cctv]);
 
       if (!officerMap[name]) {
@@ -511,11 +636,12 @@ export class GoogleSheetsService {
       if (isCctv) officerMap[name].woCctv++;
     });
 
-    dataPoRows.forEach(row => {
-      const name = String(row[poIndices.name] || "").trim();
+    allFilteredPoRows.forEach(row => {
+      const name = String(row[poIndices.name] || "").replace(/\s+/g, " ").trim();
       if (!name) return;
       const cleanUlp = this.cleanUlpName(row[poIndices.ulp]);
-      const regu = resolveOfficerRegu(name, row[poIndices.regu]);
+      const rowRegu = poIndices.regu !== -1 && poIndices.regu < row.length ? row[poIndices.regu] : undefined;
+      const regu = resolveOfficerRegu(name, rowRegu);
       const isCctv = checkCctv(row[poIndices.cctv]);
 
       if (!officerMap[name]) {
@@ -598,12 +724,14 @@ export class GoogleSheetsService {
       };
     });
 
-    // Grouping & calculations for REGU PERFORMANCE using DISTINCT (JobId, Regu)
+    // Grouping & calculations for REGU PERFORMANCE using DISTINCT (JobId, Regu) across ALL Regus
     const reguPerfMap: { [reguName: string]: { ulp: string; woTotal: number; woCctv: number; poTotal: number; poCctv: number } } = {};
     const woReguJobMap = new Map<string, { regu: string; ulp: string; hasCctv: boolean }>();
-    dataWoRows.forEach((row, idx) => {
-      const officerName = String(row[woIndices.name] || "").trim();
-      const regu = resolveOfficerRegu(officerName, row[woIndices.regu]);
+    allFilteredWoRows.forEach((row, idx) => {
+      const officerName = String(row[woIndices.name] || "").replace(/\s+/g, " ").trim();
+      const rowRegu = woIndices.regu !== -1 && woIndices.regu < row.length ? row[woIndices.regu] : undefined;
+      const regu = resolveOfficerRegu(officerName, rowRegu);
+      if (!regu || regu === "-") return;
       const cleanUlp = this.cleanUlpName(row[woIndices.ulp]);
       const rawNoLapo = String(row[woIndices.noLaporan] || "").trim();
       const jobKey = `${rawNoLapo ? rawNoLapo.toUpperCase() : `EMPTY_WO_${idx}`}__${regu}`;
@@ -624,9 +752,11 @@ export class GoogleSheetsService {
     });
 
     const poReguJobMap = new Map<string, { regu: string; ulp: string; hasCctv: boolean }>();
-    dataPoRows.forEach((row, idx) => {
-      const officerName = String(row[poIndices.name] || "").trim();
-      const regu = resolveOfficerRegu(officerName, row[poIndices.regu]);
+    allFilteredPoRows.forEach((row, idx) => {
+      const officerName = String(row[poIndices.name] || "").replace(/\s+/g, " ").trim();
+      const rowRegu = poIndices.regu !== -1 && poIndices.regu < row.length ? row[poIndices.regu] : undefined;
+      const regu = resolveOfficerRegu(officerName, rowRegu);
+      if (!regu || regu === "-") return;
       const cleanUlp = this.cleanUlpName(row[poIndices.ulp]);
       const rawNoTugas = String(row[poIndices.noTugas] || "").trim();
       const jobKey = `${rawNoTugas ? rawNoTugas.toUpperCase() : `EMPTY_PO_${idx}`}__${regu}`;
@@ -1286,6 +1416,8 @@ export class GoogleSheetsService {
       vccData: vccRows,
       rawWoRows: dataWoRows,
       rawPoRows: dataPoRows,
+      allWoRows: allFilteredWoRows,
+      allPoRows: allFilteredPoRows,
       distinctWoRows,
       distinctPoRows,
       woHeaders,

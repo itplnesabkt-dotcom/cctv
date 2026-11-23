@@ -1,11 +1,17 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import os from "os";
+import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
 
 const PAGE_SIZE = 30000;
-const SHEET_CACHE_TTL_MS = 60 * 1000;
+const DYNAMIC_SHEET_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes for WO, PO, ANOMALI, VCC_DATA
+const MASTER_SHEET_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes for REGU, PETUGAS
+const UPSTREAM_MIN_GAP_MS = 450; // Pace upstream Google Sheets requests to avoid burst 429s
+const DEFAULT_429_COOLDOWN_MS = 30 * 1000;
+const DISK_CACHE_DIR = path.join(os.tmpdir(), "yandal-sheets-cache");
 
 interface SheetCacheEntry {
   csvText: string;
@@ -15,6 +21,81 @@ interface SheetCacheEntry {
 
 const sheetCache = new Map<string, SheetCacheEntry>();
 const inFlightSheetFetches = new Map<string, Promise<SheetCacheEntry>>();
+let upstreamQueueTail: Promise<void> = Promise.resolve();
+let lastUpstreamRequestAt = 0;
+let rateLimitedUntil = 0;
+
+function getCacheTtlForSheet(sheetName?: string): number {
+  const upper = String(sheetName || "").trim().toUpperCase();
+  if (upper === "REGU" || upper === "PETUGAS") {
+    return MASTER_SHEET_CACHE_TTL_MS;
+  }
+  return DYNAMIC_SHEET_CACHE_TTL_MS;
+}
+
+function getDiskCachePaths(targetUrl: string): { csvPath: string; metaPath: string } {
+  const hash = crypto.createHash("sha256").update(targetUrl).digest("hex").slice(0, 24);
+  return {
+    csvPath: path.join(DISK_CACHE_DIR, `${hash}.csv`),
+    metaPath: path.join(DISK_CACHE_DIR, `${hash}.meta.json`),
+  };
+}
+
+function readDiskCache(targetUrl: string): SheetCacheEntry | null {
+  try {
+    const { csvPath, metaPath } = getDiskCachePaths(targetUrl);
+    if (!fs.existsSync(csvPath)) return null;
+    const csvText = fs.readFileSync(csvPath, "utf8");
+    if (!csvText || csvText.trimStart().startsWith("<")) return null;
+    let fetchedAt = fs.statSync(csvPath).mtimeMs;
+    if (fs.existsSync(metaPath)) {
+      try {
+        const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+        if (typeof meta?.fetchedAt === "number") fetchedAt = meta.fetchedAt;
+      } catch {}
+    }
+    const entry: SheetCacheEntry = {
+      csvText,
+      records: splitCsvRecords(csvText),
+      fetchedAt,
+    };
+    sheetCache.set(targetUrl, entry);
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+function writeDiskCache(targetUrl: string, entry: SheetCacheEntry): void {
+  try {
+    if (!fs.existsSync(DISK_CACHE_DIR)) {
+      fs.mkdirSync(DISK_CACHE_DIR, { recursive: true });
+    }
+    const { csvPath, metaPath } = getDiskCachePaths(targetUrl);
+    fs.writeFileSync(csvPath, entry.csvText, "utf8");
+    fs.writeFileSync(metaPath, JSON.stringify({ fetchedAt: entry.fetchedAt }), "utf8");
+  } catch (err) {
+    console.warn("Failed writing disk sheet cache:", err);
+  }
+}
+
+async function waitForUpstreamSlot(): Promise<void> {
+  const prev = upstreamQueueTail;
+  let release!: () => void;
+  upstreamQueueTail = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  await prev;
+  try {
+    const waitMs = Math.max(0, UPSTREAM_MIN_GAP_MS - (Date.now() - lastUpstreamRequestAt));
+    if (waitMs > 0) {
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
+    lastUpstreamRequestAt = Date.now();
+  } finally {
+    release();
+  }
+}
 
 function splitCsvRecords(csvText: string): string[] {
   const records: string[] = [];
@@ -41,49 +122,91 @@ function splitCsvRecords(csvText: string): string[] {
   return records;
 }
 
-async function fetchUpstreamSheetWithRetries(targetUrl: string): Promise<SheetCacheEntry> {
-  const maxAttempts = 3;
+class UpstreamHttpError extends Error {
+  status: number;
+  retryAfterSec?: number;
+  constructor(message: string, status: number, retryAfterSec?: number) {
+    super(message);
+    this.status = status;
+    this.retryAfterSec = retryAfterSec;
+  }
+}
+
+async function fetchUpstreamSheetWithRetries(targetUrl: string, hasStaleCache: boolean): Promise<SheetCacheEntry> {
+  const maxAttempts = hasStaleCache ? 1 : 2;
   let lastError: any = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    await waitForUpstreamSlot();
+
+    if (Date.now() < rateLimitedUntil) {
+      const waitSec = Math.ceil((rateLimitedUntil - Date.now()) / 1000);
+      throw new UpstreamHttpError(`Rate limit cooldown active (${waitSec}s remaining)`, 429, waitSec);
+    }
+
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s covers headers + large body download
+    let headerTimer: ReturnType<typeof setTimeout> | null = null;
+    let bodyTimer: ReturnType<typeof setTimeout> | null = null;
 
     try {
+      headerTimer = setTimeout(() => controller.abort(), 12000);
       const response = await fetch(targetUrl, {
         signal: controller.signal,
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
       });
+      if (headerTimer) {
+        clearTimeout(headerTimer);
+        headerTimer = null;
+      }
 
       if (!response.ok) {
-        lastError = new Error(`HTTP status ${response.status}`);
-        console.warn(`Attempt ${attempt} failed fetching sheets with HTTP ${response.status}. Retrying...`);
+        if (response.status === 429) {
+          const retryAfterRaw = response.headers.get("retry-after");
+          const parsedRetry = retryAfterRaw ? parseInt(retryAfterRaw, 10) : NaN;
+          const cooldownMs = !isNaN(parsedRetry) && parsedRetry > 0
+            ? Math.min(Math.max(parsedRetry * 1000, 15000), 60000)
+            : DEFAULT_429_COOLDOWN_MS;
+          rateLimitedUntil = Date.now() + cooldownMs;
+          lastError = new UpstreamHttpError(`HTTP status 429`, 429, Math.ceil(cooldownMs / 1000));
+          break; // Never hammer Google immediately after a 429
+        }
+        lastError = new UpstreamHttpError(`HTTP status ${response.status}`, response.status);
       } else {
         const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+        bodyTimer = setTimeout(() => controller.abort(), 45000);
         const csvText = await response.text();
+        if (bodyTimer) {
+          clearTimeout(bodyTimer);
+          bodyTimer = null;
+        }
         if (contentType.includes("text/html") || csvText.trimStart().startsWith("<!DOCTYPE html") || csvText.trimStart().startsWith("<html")) {
           lastError = new Error("Upstream returned HTML instead of CSV");
-          console.warn(`Attempt ${attempt} returned HTML instead of CSV. Retrying...`);
         } else {
-          const records = splitCsvRecords(csvText);
-          return {
+          const entry: SheetCacheEntry = {
             csvText,
-            records,
+            records: splitCsvRecords(csvText),
             fetchedAt: Date.now(),
           };
+          writeDiskCache(targetUrl, entry);
+          return entry;
         }
       }
     } catch (err: any) {
-      lastError = err;
-      console.warn(`Attempt ${attempt} failed with error: ${err.message || err}. Retrying...`);
+      if (err?.name === "AbortError" || controller.signal.aborted) {
+        lastError = new UpstreamHttpError("Upstream Google Sheets request timed out", 504);
+        break;
+      } else {
+        lastError = err;
+      }
     } finally {
-      clearTimeout(timeoutId);
+      if (headerTimer) clearTimeout(headerTimer);
+      if (bodyTimer) clearTimeout(bodyTimer);
     }
 
     if (attempt < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      await new Promise(resolve => setTimeout(resolve, 1500 * attempt));
     }
   }
 
@@ -108,7 +231,7 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-  // Google Sheets CORS Bypass Proxy with caching, deduplication, retry logic, and safe CSV pagination
+  // Google Sheets CORS Bypass Proxy with caching, disk fallback, deduplication, upstream pacing, and safe CSV pagination
   app.get("/api/sheets", async (req, res) => {
     const sheetName = req.query.sheetName as string;
     const customUrl = req.query.customUrl as string;
@@ -126,8 +249,9 @@ async function startServer() {
       return;
     }
 
-    const sendEntry = (entry: SheetCacheEntry) => {
+    const sendEntry = (entry: SheetCacheEntry, isStale = false) => {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Cache-Control", isStale ? "no-cache" : "private, max-age=60");
       if (paged && entry.records.length > 0) {
         const dataCount = Math.max(0, entry.records.length - 1);
         const totalPages = Math.max(1, Math.ceil(dataCount / PAGE_SIZE));
@@ -146,16 +270,28 @@ async function startServer() {
       }
     };
 
-    const cached = sheetCache.get(targetUrl);
-    if (cached && Date.now() - cached.fetchedAt < SHEET_CACHE_TTL_MS) {
+    const ttlMs = getCacheTtlForSheet(sheetName);
+    const cached = sheetCache.get(targetUrl) || readDiskCache(targetUrl);
+    if (cached && Date.now() - cached.fetchedAt < ttlMs) {
       sendEntry(cached);
+      return;
+    }
+
+    if (Date.now() < rateLimitedUntil) {
+      if (cached) {
+        sendEntry(cached, true);
+        return;
+      }
+      const retrySec = Math.max(1, Math.ceil((rateLimitedUntil - Date.now()) / 1000));
+      res.setHeader("Retry-After", String(retrySec));
+      res.status(429).json({ error: `Google Sheets rate limit active, retry after ${retrySec}s`, retryAfter: retrySec });
       return;
     }
 
     try {
       let fetchPromise = inFlightSheetFetches.get(targetUrl);
       if (!fetchPromise) {
-        fetchPromise = fetchUpstreamSheetWithRetries(targetUrl).finally(() => {
+        fetchPromise = fetchUpstreamSheetWithRetries(targetUrl, Boolean(cached)).finally(() => {
           inFlightSheetFetches.delete(targetUrl);
         });
         inFlightSheetFetches.set(targetUrl, fetchPromise);
@@ -165,13 +301,17 @@ async function startServer() {
       sheetCache.set(targetUrl, freshEntry);
       sendEntry(freshEntry);
     } catch (err: any) {
-      console.error("All sheet fetch attempts failed. Last error:", err);
       if (cached) {
-        console.warn(`Serving stale cached sheet data for ${sheetName || customUrl}`);
-        sendEntry(cached);
+        console.warn(`Serving stale cached sheet data for ${sheetName || customUrl} (${err?.message || err})`);
+        sendEntry(cached, true);
         return;
       }
-      res.status(500).json({ error: err?.message || "Internal server error fetching sheets after multiple attempts" });
+      const status = err instanceof UpstreamHttpError && (err.status === 429 || err.status === 504) ? err.status : 500;
+      if (status === 429) {
+        const retrySec = err.retryAfterSec || 30;
+        res.setHeader("Retry-After", String(retrySec));
+      }
+      res.status(status).json({ error: err?.message || "Internal server error fetching sheets" });
     }
   });
 
