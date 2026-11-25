@@ -708,14 +708,16 @@ export class GoogleSheetsService {
 
     const standardUlps = ["BUKITTINGGI", "PADANG PANJANG", "LUBUK SIKAPING", "LUBUK BASUNG", "SIMPANG EMPAT", "BASO", "KOTO TUO"];
 
-    // Grouping & calculations for ULP PERFORMANCE using DISTINCT data
+    // Grouping & calculations for ULP PERFORMANCE using DISTINCT active-date data grouped by Posko column
     const ulpMap: { [ulpName: string]: { woTotal: number; woCctv: number; poTotal: number; poCctv: number } } = {};
     standardUlps.forEach(ulp => {
       ulpMap[ulp] = { woTotal: 0, woCctv: 0, poTotal: 0, poCctv: 0 };
     });
 
-    distinctWoRows.forEach(row => {
-      const cleanUlp = this.cleanUlpName(row[woIndices.ulp]);
+    distinctAllWoRows.forEach(row => {
+      const rawPosko = woIndices.ulp !== -1 && woIndices.ulp < row.length ? String(row[woIndices.ulp] || "").trim() : "";
+      if (!rawPosko) return;
+      const cleanUlp = this.cleanUlpName(rawPosko);
       if (cleanUlp) {
         if (!ulpMap[cleanUlp]) {
           ulpMap[cleanUlp] = { woTotal: 0, woCctv: 0, poTotal: 0, poCctv: 0 };
@@ -727,8 +729,10 @@ export class GoogleSheetsService {
       }
     });
 
-    distinctPoRows.forEach(row => {
-      const cleanUlp = this.cleanUlpName(row[poIndices.ulp]);
+    distinctAllPoRows.forEach(row => {
+      const rawPosko = poIndices.ulp !== -1 && poIndices.ulp < row.length ? String(row[poIndices.ulp] || "").trim() : "";
+      if (!rawPosko) return;
+      const cleanUlp = this.cleanUlpName(rawPosko);
       if (cleanUlp) {
         if (!ulpMap[cleanUlp]) {
           ulpMap[cleanUlp] = { woTotal: 0, woCctv: 0, poTotal: 0, poCctv: 0 };

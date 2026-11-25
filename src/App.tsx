@@ -311,8 +311,8 @@ export default function App() {
     const isUp3Card = identifier === "UP3" || identifier === "ALL";
     const activeData = filteredData || data;
     const rawRows = type === 'WO' 
-      ? (isUp3Card ? (activeData.distinctAllWoRows || activeData.distinctWoRows) : (isUlp ? activeData.distinctWoRows : (activeData.allWoRows || activeData.rawWoRows))) 
-      : (isUp3Card ? (activeData.distinctAllPoRows || activeData.distinctPoRows) : (isUlp ? activeData.distinctPoRows : (activeData.allPoRows || activeData.rawPoRows)));
+      ? ((isUp3Card || isUlp) ? (activeData.distinctAllWoRows || activeData.distinctWoRows) : (activeData.allWoRows || activeData.rawWoRows)) 
+      : ((isUp3Card || isUlp) ? (activeData.distinctAllPoRows || activeData.distinctPoRows) : (activeData.allPoRows || activeData.rawPoRows));
     const indices = type === 'WO' ? data.woIndices : data.poIndices;
 
     const cleanName = (name: any) => {
