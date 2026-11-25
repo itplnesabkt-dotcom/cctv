@@ -603,7 +603,7 @@ export class GoogleSheetsService {
       distinctPoRows.push(representative);
     });
 
-    // Non-empty date-filtered WO/PO rows for Officer & Regu performance (includes ALL Regus from Nama Regu column)
+    // Non-empty date-filtered WO/PO rows for Officer & Regu performance and UP3 totals (includes ALL Regus matching active date)
     const allFilteredWoRows = rawFilteredWoRows.filter(row => {
       const hasName = woIndices.name !== -1 && woIndices.name < row.length && String(row[woIndices.name] || "").trim() !== "";
       const hasRegu = woIndices.regu !== -1 && woIndices.regu < row.length && String(row[woIndices.regu] || "").trim() !== "";
@@ -614,6 +614,42 @@ export class GoogleSheetsService {
       const hasName = poIndices.name !== -1 && poIndices.name < row.length && String(row[poIndices.name] || "").trim() !== "";
       const hasRegu = poIndices.regu !== -1 && poIndices.regu < row.length && String(row[poIndices.regu] || "").trim() !== "";
       return hasName || hasRegu;
+    });
+
+    // Deduplicate ALL active-date WO rows by No Laporan for TOTAL WO UP3 card
+    const allWoGroupMap = new Map<string, any[]>();
+    allFilteredWoRows.forEach((row, idx) => {
+      const rawNoLapo = String(row[woIndices.noLaporan] || "").trim();
+      const key = rawNoLapo ? rawNoLapo.toUpperCase() : `EMPTY_ALL_WO_${idx}`;
+      if (!allWoGroupMap.has(key)) {
+        allWoGroupMap.set(key, []);
+      }
+      allWoGroupMap.get(key)!.push(row);
+    });
+    const distinctAllWoRows: any[][] = [];
+    allWoGroupMap.forEach((rows) => {
+      const hasCctv = rows.some(r => checkCctv(r[woIndices.cctv]));
+      const representative = [...rows[0]];
+      representative[woIndices.cctv] = hasCctv ? "CCTV YA" : "TIDAK";
+      distinctAllWoRows.push(representative);
+    });
+
+    // Deduplicate ALL active-date PO rows by No Tugas for TOTAL PO UP3 card
+    const allPoGroupMap = new Map<string, any[]>();
+    allFilteredPoRows.forEach((row, idx) => {
+      const rawNoTugas = String(row[poIndices.noTugas] || "").trim();
+      const key = rawNoTugas ? rawNoTugas.toUpperCase() : `EMPTY_ALL_PO_${idx}`;
+      if (!allPoGroupMap.has(key)) {
+        allPoGroupMap.set(key, []);
+      }
+      allPoGroupMap.get(key)!.push(row);
+    });
+    const distinctAllPoRows: any[][] = [];
+    allPoGroupMap.forEach((rows) => {
+      const hasCctv = rows.some(r => checkCctv(r[poIndices.cctv]));
+      const representative = [...rows[0]];
+      representative[poIndices.cctv] = hasCctv ? "CCTV YA" : "TIDAK";
+      distinctAllPoRows.push(representative);
     });
 
     // Grouping & calculations for OFFICER PERFORMANCE (Kinerja Petugas) - ALL REGUS FROM WO/PO NAMA REGU
@@ -868,17 +904,17 @@ export class GoogleSheetsService {
       return anomValue === "ANOMALI";
     });
 
-    const totalBaca = distinctWoRows.length;
-    const totalValid = distinctWoRows.filter(r => checkCctv(r[woIndices.cctv])).length;
+    const totalBaca = distinctAllWoRows.length;
+    const totalValid = distinctAllWoRows.filter(r => checkCctv(r[woIndices.cctv])).length;
     const tidakValid = totalBaca - totalValid;
-    const totalPo = distinctPoRows.length;
-    const totalPoCctv = distinctPoRows.filter(r => checkCctv(r[poIndices.cctv])).length;
+    const totalPo = distinctAllPoRows.length;
+    const totalPoCctv = distinctAllPoRows.filter(r => checkCctv(r[poIndices.cctv])).length;
 
-    // Detect latest dates
+    // Detect latest dates across all active-date rows
     let latestWoDateObj: Date | null = null;
     let latestCctvDateObj: Date | null = null;
 
-    dataWoRows.forEach(row => {
+    allFilteredWoRows.forEach(row => {
       const d = this.parseDate(row[woIndices.tglLapor]);
       if (d) {
         if (!latestWoDateObj || d > latestWoDateObj) {
@@ -894,7 +930,7 @@ export class GoogleSheetsService {
 
     let latestPoDateObj: Date | null = null;
     const poTglIdx = findIndex(poHeaders, ["TGL", "Tgl Catat", "Tanggal PO"], 25);
-    dataPoRows.forEach(row => {
+    allFilteredPoRows.forEach(row => {
       const d = this.parseDate(row[poTglIdx]);
       if (d) {
         if (!latestPoDateObj || d > latestPoDateObj) {
@@ -934,10 +970,10 @@ export class GoogleSheetsService {
     const latestPoDate = this.formatDateIndo(latestPoDateObj);
     const latestAnomaliDate = this.formatDateIndo(latestAnomaliDateObj);
 
-    const rawTotalWo = dataWoRows.length;
-    const rawTotalWoCctv = dataWoRows.filter(r => checkCctv(r[woIndices.cctv])).length;
-    const rawTotalPo = dataPoRows.length;
-    const rawTotalPoCctv = dataPoRows.filter(r => checkCctv(r[poIndices.cctv])).length;
+    const rawTotalWo = allFilteredWoRows.length;
+    const rawTotalWoCctv = allFilteredWoRows.filter(r => checkCctv(r[woIndices.cctv])).length;
+    const rawTotalPo = allFilteredPoRows.length;
+    const rawTotalPoCctv = allFilteredPoRows.filter(r => checkCctv(r[poIndices.cctv])).length;
     const rawTotalCctv = rawTotalWoCctv + rawTotalPoCctv;
 
     const summary = {
@@ -1420,6 +1456,8 @@ export class GoogleSheetsService {
       allPoRows: allFilteredPoRows,
       distinctWoRows,
       distinctPoRows,
+      distinctAllWoRows,
+      distinctAllPoRows,
       woHeaders,
       poHeaders,
       woIndices,

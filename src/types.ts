@@ -48,6 +48,8 @@ export interface DashboardData {
   allPoRows?: any[][];
   distinctWoRows: any[][];
   distinctPoRows: any[][];
+  distinctAllWoRows?: any[][];
+  distinctAllPoRows?: any[][];
   woHeaders: string[];
   poHeaders: string[];
   woIndices: { name: number; ulp: number; cctv: number; tglLapor: number; tglPengerjaan: number; tglSelesai: number; source: number; reporter: number; shift: number; rpt: number; rct: number; regu?: number; noLaporan?: number };

@@ -113,6 +113,14 @@ export default function App() {
       ? (data.allPoRows || data.rawPoRows).filter(row => cleanUlp(row[data.poIndices.ulp]) === targetUlpClean)
       : (data.allPoRows || data.rawPoRows);
 
+    const filteredDistinctAllWoRows = selectedUlp
+      ? (data.distinctAllWoRows || data.distinctWoRows).filter(row => cleanUlp(row[data.woIndices.ulp]) === targetUlpClean)
+      : (data.distinctAllWoRows || data.distinctWoRows);
+
+    const filteredDistinctAllPoRows = selectedUlp
+      ? (data.distinctAllPoRows || data.distinctPoRows).filter(row => cleanUlp(row[data.poIndices.ulp]) === targetUlpClean)
+      : (data.distinctAllPoRows || data.distinctPoRows);
+
     // 3. Filter CCTV Usage
     const filteredCctvUsage = selectedUlp
       ? data.cctvUsage.filter(u => cleanUlp(u.ulp) === targetUlpClean)
@@ -215,10 +223,28 @@ export default function App() {
       };
     }
     
+    const checkCctvStatus = (val: any) => {
+      const s = String(val || "").toUpperCase();
+      if (!s || s === "-" || s.includes("TIDAK")) return false;
+      return s.includes("CCTV") || s.includes("PAKAI") || s.includes("YA") || s.includes("VIDEO") || s.includes("FOTO") || s.includes("ADA");
+    };
+
+    const filteredSummary = selectedUlp
+      ? {
+          ...data.summary,
+          distinctTotalWo: filteredDistinctAllWoRows.length,
+          distinctTotalWoCctv: filteredDistinctAllWoRows.filter(r => checkCctvStatus(r[data.woIndices.cctv])).length,
+          distinctTotalPo: filteredDistinctAllPoRows.length,
+          distinctTotalPoCctv: filteredDistinctAllPoRows.filter(r => checkCctvStatus(r[data.poIndices.cctv])).length
+        }
+      : data.summary;
+
     return {
       ...data,
       distinctWoRows: filteredDistinctWoRows,
       distinctPoRows: filteredDistinctPoRows,
+      distinctAllWoRows: filteredDistinctAllWoRows,
+      distinctAllPoRows: filteredDistinctAllPoRows,
       rawWoRows: filteredRawWoRows,
       rawPoRows: filteredRawPoRows,
       allWoRows: filteredAllWoRows,
@@ -249,7 +275,7 @@ export default function App() {
         const avgB = (parseFloat(b.persenWo) || 0) + (parseFloat(b.persenPo) || 0);
         return avgB - avgA;
       }),
-      summary: data.summary,
+      summary: filteredSummary,
       rating: {
         ...data.rating,
         officerRatings: selectedUlp
@@ -282,9 +308,11 @@ export default function App() {
     if (!data) return;
 
     const headers = type === 'WO' ? data.woHeaders : data.poHeaders;
+    const isUp3Card = identifier === "UP3" || identifier === "ALL";
+    const activeData = filteredData || data;
     const rawRows = type === 'WO' 
-      ? (isUlp ? data.distinctWoRows : (data.allWoRows || data.rawWoRows)) 
-      : (isUlp ? data.distinctPoRows : (data.allPoRows || data.rawPoRows));
+      ? (isUp3Card ? (activeData.distinctAllWoRows || activeData.distinctWoRows) : (isUlp ? activeData.distinctWoRows : (activeData.allWoRows || activeData.rawWoRows))) 
+      : (isUp3Card ? (activeData.distinctAllPoRows || activeData.distinctPoRows) : (isUlp ? activeData.distinctPoRows : (activeData.allPoRows || activeData.rawPoRows)));
     const indices = type === 'WO' ? data.woIndices : data.poIndices;
 
     const cleanName = (name: any) => {
@@ -369,8 +397,7 @@ export default function App() {
       if (isCctv) {
         filteredRows = filteredRows.filter(row => {
           if (indices.cctv === -1 || indices.cctv >= row.length) return false;
-          const cctvVal = String(row[indices.cctv] || '').toUpperCase();
-          return cctvVal.includes('CCTV');
+          return checkCctvVal(row[indices.cctv]);
         });
       }
 
